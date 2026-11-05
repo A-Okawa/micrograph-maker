@@ -45,6 +45,11 @@ CLICK_JS = """(function (label) {
 })(%s)"""
 
 
+IDLE_JS = """(function () {
+  var w = document.querySelector('[data-testid="stStatusWidget"]');
+  return !w || w.innerText.toLowerCase().indexOf('running') < 0;
+})()"""
+
 OPEN_SAVE_JS = """(function () {
   var s = Array.prototype.slice.call(document.querySelectorAll('[data-testid="stSidebar"] [data-testid="stExpander"] summary'))
     .filter(function (e) { return e.innerText.indexOf('作業の保存') >= 0; })[0];
@@ -102,6 +107,12 @@ def run(window, url, log):
         with open(os.path.join(out, 'selftest.json'), 'w', encoding='utf-8') as fh:
             json.dump(res, fh, ensure_ascii=False, indent=1)
 
+    def idle(timeout=120):
+        """Wait until the page has finished redrawing (Streamlit's 'Running' sign has gone)."""
+        time.sleep(1)
+        _poll(lambda: js(IDLE_JS), timeout)
+        time.sleep(0.5)
+
     res['sidebar'] = bool(_poll(lambda: js('!!document.querySelector(\'[data-testid="stSidebar"]\')'), 180))
     time.sleep(2)
     res['user_agent'] = js('navigator.userAgent')
@@ -140,6 +151,7 @@ def run(window, url, log):
         for old in os.listdir(folder) if os.path.isdir(folder) else []:
             if old.endswith('.pdf') and (old.startswith(RENAMED) or old.endswith('_figure.pdf')):
                 os.remove(os.path.join(folder, old))
+        idle()
         res['clicked_pdf'] = js(CLICK_JS % "'PDF'")
         dump()
         mark('dialog')
@@ -156,10 +168,20 @@ def run(window, url, log):
     for label, suffix in (('PDF', '_figure.pdf'), ('PNG', '_figure.png'), ('TIFF', '_figure.tif'), ('SVG', '_figure.svg'),
                           ('作業を保存', '.edsfig')):
         if label == '作業を保存':                          # the work file's button is in the sidebar's 「作業の保存」 section
+            idle()
             js(OPEN_SAVE_JS)
             time.sleep(2)
-        clicked = js(CLICK_JS % json.dumps(label))
-        res['downloads'][label] = _poll(lambda: _saved(save, suffix), 120) if clicked else {'clicked': False}
+        got = None
+        for attempt in range(1, 4):                        # a click while the page is still redrawing is lost: again
+            idle()
+            if not js(CLICK_JS % json.dumps(label)):
+                got = {'clicked': False}
+                continue
+            got = _poll(lambda: _saved(save, suffix), 60)
+            if got:
+                got['clicks'] = attempt
+                break
+        res['downloads'][label] = got
         dump()
     res['files_in_save_dir'] = sorted(os.listdir(save))
     res['exceptions_end'] = js('document.querySelectorAll(\'[data-testid="stException"]\').length')

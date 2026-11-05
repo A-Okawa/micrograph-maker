@@ -63,20 +63,33 @@ def captions(pg):
     return ' | '.join(pg.locator('[data-testid="stCaptionContainer"]').all_inner_texts())
 
 
-def download(pg, button, ext):
-    try:
-        with pg.expect_download(timeout=180000) as d:
-            button.click()
-        path = os.path.join(OUT, d.value.suggested_filename)
-        d.value.save_as(path)
-        with open(path, 'rb') as fh:
-            data = fh.read()
-        good = any(data.startswith(m) for m in MAGIC[ext]) and len(data) > 100
-        ok(good, f'{d.value.suggested_filename}: {len(data)} bytes, {data[:6]!r}')
-        return path
-    except Exception as e:  # noqa: BLE001
-        ok(False, f'download {ext}: {e!r}'[:300])
-        return None
+def download(pg, button, ext, tries=3):
+    """Click a download button (found again each time) and check the file. A click that lands while the page is
+    still redrawing after the previous download is lost, so it is tried again."""
+    err = None
+    for attempt in range(1, tries + 1):
+        settle(pg)
+        try:
+            with pg.expect_download(timeout=90000) as d:
+                button().click(timeout=90000)                       # waits while the page is still busy
+            path = os.path.join(OUT, d.value.suggested_filename)
+            d.value.save_as(path)
+            with open(path, 'rb') as fh:
+                data = fh.read()
+            good = any(data.startswith(m) for m in MAGIC[ext]) and len(data) > 100
+            ok(good, f'{d.value.suggested_filename}: {len(data)} bytes, {data[:6]!r}'
+               + (f' (click {attempt})' if attempt > 1 else ''))
+            return path
+        except Exception as e:  # noqa: BLE001
+            err = e
+            try:
+                state = [(b.inner_text()[:16], b.is_disabled()) for b in pg.locator('[data-testid="stDownloadButton"] button').all()]
+                pg.screenshot(path=os.path.join(OUT, f'{MODE}-download-{ext}-{attempt}.png'), full_page=True)
+            except Exception:  # noqa: BLE001
+                state = '?'
+            print(f'download {ext}: no download after click {attempt} ({repr(e)[:120]}); buttons {state}', flush=True)
+    ok(False, f'download {ext}: {err!r}'[:300])
+    return None
 
 
 def pick_figure(pg, text):
@@ -119,13 +132,11 @@ with sync_playwright() as p:
     pg.screenshot(path=os.path.join(OUT, f'{MODE}-2-report.png'), full_page=True)
 
     for label, ext in (('PDF', 'pdf'), ('PNG', 'png'), ('TIFF', 'tif'), ('SVG', 'svg'), ('画像ごと（ZIP）', 'zip')):
-        btn = pg.locator('[data-testid="stDownloadButton"] button', has_text=label).first
-        download(pg, btn, ext)
-        settle(pg)
-    pg.locator('[data-testid="stSidebar"] [data-testid="stExpander"]').filter(has_text='作業の保存').first.click()
+        download(pg, lambda label=label: pg.locator('[data-testid="stDownloadButton"] button', has_text=label).first, ext)
     settle(pg)
-    work = pg.locator('[data-testid="stSidebar"] [data-testid="stDownloadButton"] button', has_text='作業を保存').first
-    download(pg, work, 'edsfig')
+    pg.locator('[data-testid="stSidebar"] [data-testid="stExpander"]').filter(has_text='作業の保存').first.click()
+    download(pg, lambda: pg.locator('[data-testid="stSidebar"] [data-testid="stDownloadButton"] button',
+                                    has_text='作業を保存').first, 'edsfig')
     settle(pg)
     if HOME:
         ok(os.path.exists(os.path.join(HOME, 'exemplars.json')), 'the confirmed readings are learned into EDSFIG_HOME')
