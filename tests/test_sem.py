@@ -204,6 +204,23 @@ def test_long_ruler(tmp: Path = Path(".")):
         assert textread.parse_length(p.scalebar.text) == textread.parse_length(label), (label, p.scalebar.text)
 
 
+def test_long_ruler_jpeg(tmp: Path = Path(".")):
+    """The same pictures saved as JPEG: the ruler's black (0) comes out as 0-20 and the white
+    around it as 240-255.  The band must still be cut whole (no ruler left on the picture) and its
+    scale read."""
+    reader = textread.Reader(store_path=tmp / "ex.json", learn=False)
+    reader.exemplars = {"element": [], "scale": []}
+    for bar_px, label in ((357, "50 um"), (396, "200 um"), (560, "20 um")):
+        im = Image.open(io.BytesIO(hitachi_like(bar_px, label)))
+        for q in (90, 75, 50):
+            b = io.BytesIO()
+            im.save(b, "JPEG", quality=q)
+            p = aztec.read_images([(b.getvalue(), "a.jpg")], reader=reader).panels[0]
+            assert p.band_px == 40 and p.size == (640, 480), (bar_px, q, p.band_px)
+            assert p.scalebar is not None and abs(p.scalebar.length_px - bar_px) <= 1, (bar_px, q, p.scalebar)
+            assert textread.parse_length(p.scalebar.text) == textread.parse_length(label), (label, q, p.scalebar.text)
+
+
 def test_metadata_wins(tmp: Path = Path(".")):
     reader = textread.Reader(store_path=tmp / "ex.json", learn=False)
     txt = "$CM_MAG 330\n$$SM_MICRON_BAR 35\n$$SM_MICRON_MARKER 10um\n"
@@ -253,6 +270,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as d:
         test_bands_bars_and_labels(Path(d))
         test_long_ruler(Path(d))
+        test_long_ruler_jpeg(Path(d))
         test_tick_ruler(Path(d))
         test_two_line_band(Path(d))
         test_drawn_band_beats_flat_picture(Path(d))

@@ -64,16 +64,34 @@ def _row_mode(r: np.ndarray) -> tuple[float, float]:
     return float(m), float(win[m] / r.size)
 
 
+def _close_gaps(on: np.ndarray, gap: int) -> np.ndarray:
+    """A row of on/off pixels with the off runs of up to `gap` pixels between two on pixels closed."""
+    out = on.copy()
+    idx = np.flatnonzero(on)
+    if len(idx) > 1:
+        d = np.diff(idx)
+        for i in np.flatnonzero((d > 1) & (d <= gap + 1)):
+            out[idx[i] + 1: idx[i + 1]] = True
+    return out
+
+
 def _bar_row(r: np.ndarray, bg: float, near_bg: float) -> bool:
     """A row through a long scale bar: background plus one flat level drawn as one to three long
-    strokes (a bar over more than half the width leaves less than half the row as background)."""
+    strokes (a bar over more than half the width leaves less than half the row as background).
+    A picture saved as JPEG spreads both levels (a black bar of 0-20 instead of 0): each level is
+    matched within 15 % of their difference, and a pixel or two off the level inside a stroke is
+    still the stroke."""
     ink = np.abs(r - bg) > 4
     if ink.mean() < 0.1 or near_bg < 0.05:  # a bar never fills the whole row
         return False
-    m, share = _row_mode(r[ink])
-    if abs(m - bg) < 60 or near_bg + share * ink.mean() < 0.97:  # two clearly different levels only
+    m, _ = _row_mode(r[ink])
+    if abs(m - bg) < 60:
         return False
-    on = np.abs(r - m) <= 3
+    tol = max(3.0, 0.15 * abs(m - bg))
+    on = np.abs(r - m) <= tol
+    if float((on | (np.abs(r - bg) <= tol)).mean()) < 0.97:  # two clearly different levels only
+        return False
+    on = _close_gaps(on, 2)
     d = np.diff(np.concatenate(([0], on.astype(np.int8), [0])))
     lengths = np.flatnonzero(d == -1) - np.flatnonzero(d == 1)
     return 0 < len(lengths) <= 3 and 0.1 * r.size <= lengths.max() < 0.9 * r.size
