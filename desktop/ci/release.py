@@ -5,6 +5,8 @@
         → prints the release id (creates it when missing; fills an empty description from NOTES_FILE).
           draft-only: prints nothing when the release exists and is already published (it is not changed then)
   python release.py upload RELEASE_ID FILE...                        (replaces assets of the same name)
+  python release.py upload-draft RELEASE_ID FILE...                  (the same, only while the release is a draft:
+                                                                      the apps of a published release are not replaced)
   python release.py publish RELEASE_ID                               (draft → published, marked as the latest)
 """
 import json
@@ -73,6 +75,14 @@ def upload(rid, files):
         print('uploaded', name, len(data), 'bytes')
 
 
+def upload_draft(rid, files):
+    rel = call('GET', f'{API}/repos/{REPO}/releases/{rid}')
+    if not rel['draft']:
+        print(f'{rel["name"]} is already published: its files stay as they are')
+        return
+    upload(rid, files)
+
+
 def publish(rid):
     call('PATCH', f'{API}/repos/{REPO}/releases/{rid}', {'draft': False, 'make_latest': 'true'})
     print('published', rid)
@@ -84,5 +94,7 @@ if __name__ == '__main__':
         print(ensure(*sys.argv[2:6], only_draft=sys.argv[6:7] == ['draft-only']))
     elif cmd == 'upload':
         upload(sys.argv[2], sys.argv[3:])
+    elif cmd == 'upload-draft':
+        upload_draft(sys.argv[2], sys.argv[3:])
     elif cmd == 'publish':
         publish(sys.argv[2])

@@ -5,7 +5,8 @@ name: PC app (Mac, Windows)
 #   下書きのリリース「Micrograph Maker v<版>」に置く（下書きは公開されない）。GitHub の Releases でその下書きの
 #   「Publish release」を押すと公開される（そのときタグ v<版> ができる）。公開済みの版のリリースは変えない
 # - v で始まるタグ（例 v0.11.0）の push：edsfig/__init__.py の __version__ と同じ版のタグにする。Mac と Windows の両方ができて
-#   テストが通ったら、そのタグのリリースにアプリを置いて公開する（どちらかが失敗したら下書きのまま）
+#   テストが通ったら、そのタグのリリースにアプリを置いて公開する（どちらかが失敗したら下書きのまま）。
+#   「Publish release」でできたタグのように、その版のリリースがもう公開されていれば何もしない（公開したアプリを作り直して置き換えない）
 on:
   push:
     branches: [desktop]
@@ -26,6 +27,7 @@ jobs:
       version: ${{ steps.ids.outputs.version }}
       ci_release: ${{ steps.ids.outputs.ci_release }}
       app_release: ${{ steps.ids.outputs.app_release }}
+      published: ${{ steps.ids.outputs.published }}
     steps:
       - uses: actions/checkout@v4
       - id: ids
@@ -34,16 +36,24 @@ jobs:
         run: |
           version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' edsfig/__init__.py)
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "ci_release=$(python3 desktop/ci/release.py ensure desktop-ci 'PC app checks (not for students)' true '')" >> "$GITHUB_OUTPUT"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match __version__ $version"; exit 1; }
-            echo "app_release=$(python3 desktop/ci/release.py ensure "$GITHUB_REF_NAME" "Micrograph Maker $GITHUB_REF_NAME" true desktop/release_notes.md)" >> "$GITHUB_OUTPUT"
+            rid=$(python3 desktop/ci/release.py ensure "$GITHUB_REF_NAME" "Micrograph Maker $GITHUB_REF_NAME" true desktop/release_notes.md draft-only)
+            if [ -z "$rid" ]; then
+              # the tag came from「Publish release」: the release is public with the apps checked on the desktop branch
+              echo "Micrograph Maker $GITHUB_REF_NAME is already published; its apps stay as they are (nothing to build)."
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "app_release=$rid" >> "$GITHUB_OUTPUT"
           else
             echo "app_release=$(python3 desktop/ci/release.py ensure "v$version" "Micrograph Maker v$version" true desktop/release_notes.md draft-only)" >> "$GITHUB_OUTPUT"
           fi
+          echo "ci_release=$(python3 desktop/ci/release.py ensure desktop-ci 'PC app checks (not for students)' true '')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
+    if: needs.prepare.outputs.published != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -164,11 +174,11 @@ jobs:
 
       - name: Apps to the release of this version (a draft until it is published)
         if: needs.prepare.outputs.app_release != ''
-        run: python desktop/ci/release.py upload "${{ needs.prepare.outputs.app_release }}" out/*
+        run: python desktop/ci/release.py upload-draft "${{ needs.prepare.outputs.app_release }}" out/*   # published meanwhile: left as it is
 
   publish:
     needs: [prepare, build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && needs.prepare.outputs.app_release != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

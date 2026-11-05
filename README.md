@@ -95,8 +95,8 @@ Python のインストールもターミナルも要りません。
 **新しい版の出し方**（`.github/workflows/desktop.yml`）：`edsfig/__init__.py` の `__version__` を上げて `desktop` ブランチに push すると、
 GitHub が本物の Mac と Windows の上でアプリを作り、起動・ファイルの読み込み・書き出し・保存の窓・インストーラーまで確かめます。
 通ったアプリは下書きのリリース「Micrograph Maker v<版>」に置かれ（テストの記録と画面の写真は下書き「desktop-ci」）、
-Releases でその下書きの「Publish release」を押すと公開されます。中に入れる部品の版は `desktop/requirements.txt` と
-`desktop/constraints.txt` で固定しています。
+Releases でその下書きの「Publish release」を押すと公開されます（そのときタグ v<版> ができます。公開したアプリは
+作り直さず、そのまま配られます）。中に入れる部品の版は `desktop/requirements.txt` と `desktop/constraints.txt` で固定しています。
 
 ## 研究室の PC で共有する（学生はブラウザで使う）
 
