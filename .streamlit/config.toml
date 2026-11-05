@@ -1,0 +1,8 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+# このPCからだけ開ける（LAN上の他のPCには公開しない）。研究室で共有するときは serve.py（start_server_*）から起動します
+address = "localhost"
+# 1ファイルの上限 (MB)。作業ファイル（.edsfig）は元のファイルの合計の大きさになります
+maxUploadSize = 2000

@@ -1,0 +1,10 @@
+# PC 版（Mac・Windows のアプリ）を作るためのパッケージ。GitHub Actions（.github/workflows/desktop.yml）が使う。
+# 版はこのアプリで確かめた組み合わせ（figapp の PC 版と同じ）。ほかの依存の版は constraints.txt で固定している。
+streamlit==1.66.1
+matplotlib==3.11.2
+numpy==2.5.4
+pandas==3.0.6
+pillow==13.0.0
+pywebview==6.2.1
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9

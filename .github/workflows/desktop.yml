@@ -1,0 +1,177 @@
+name: PC app (Mac, Windows)
+
+# Micrograph Maker の PC 版（Mac の Micrograph Maker.app と Windows の MicrographMaker.exe）を作って確かめる（figapp と同じ流れ）。
+# - desktop ブランチへの push：作って確かめる。テストの記録・画面の写真は下書きのリリース「desktop-ci」に、テストが通ったアプリは
+#   下書きのリリース「Micrograph Maker v<版>」に置く（下書きは公開されない）。GitHub の Releases でその下書きの
+#   「Publish release」を押すと公開される（そのときタグ v<版> ができる）。公開済みの版のリリースは変えない
+# - v で始まるタグ（例 v0.11.0）の push：edsfig/__init__.py の __version__ と同じ版のタグにする。Mac と Windows の両方ができて
+#   テストが通ったら、そのタグのリリースにアプリを置いて公開する（どちらかが失敗したら下書きのまま）
+on:
+  push:
+    branches: [desktop]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ids.outputs.version }}
+      ci_release: ${{ steps.ids.outputs.ci_release }}
+      app_release: ${{ steps.ids.outputs.app_release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ids
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' edsfig/__init__.py)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ci_release=$(python3 desktop/ci/release.py ensure desktop-ci 'PC app checks (not for students)' true '')" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match __version__ $version"; exit 1; }
+            echo "app_release=$(python3 desktop/ci/release.py ensure "$GITHUB_REF_NAME" "Micrograph Maker $GITHUB_REF_NAME" true desktop/release_notes.md)" >> "$GITHUB_OUTPUT"
+          else
+            echo "app_release=$(python3 desktop/ci/release.py ensure "v$version" "Micrograph Maker v$version" true desktop/release_notes.md draft-only)" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: mac
+          - os: windows-2025
+            target: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REPORT: report-${{ matrix.target }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the packages
+        run: |
+          mkdir -p "$REPORT"
+          {
+            python -m pip install --upgrade pip
+            if [ "$RUNNER_OS" = macOS ]; then
+              # wheels that run on macOS 12 or later (pip would otherwise take e.g. numpy built for macOS 14 or later)
+              python -m pip wheel --no-deps -w wheels proxy_tools==0.1.0
+              python -m pip download --only-binary=:all: --platform macosx_12_0_arm64 --python-version 3.12 \
+                --implementation cp --abi cp312 --abi abi3 --abi none --find-links wheels \
+                -r desktop/requirements.txt -c desktop/constraints.txt -d wheels
+              python -m pip install --no-index --find-links wheels -r desktop/requirements.txt -c desktop/constraints.txt
+            else
+              python -m pip install -r desktop/requirements.txt -c desktop/constraints.txt
+            fi
+          } 2>&1 | tee "$REPORT/pip.log"
+          python -m pip freeze > "$REPORT/pip-freeze.txt"
+          python -c "import sys, platform; print(sys.version, platform.platform(), platform.machine())" | tee "$REPORT/python.txt"
+
+      - name: Self-tests of the app (this machine)
+        run: |
+          set -o pipefail
+          for t in tests/test_*.py; do
+            echo "== $t"
+            python "$t" || exit 1
+          done 2>&1 | tee "$REPORT/unit-tests.txt"
+
+      - name: Build the app
+        run: |
+          pyinstaller desktop/micrograph_maker.spec --noconfirm --clean 2>&1 | tee "$REPORT/pyinstaller.log"
+          du -sh dist/* | tee "$REPORT/size.txt"
+
+      - name: Mac – signature and oldest macOS
+        if: runner.os == 'macOS'
+        run: |
+          find "dist/Micrograph Maker.app" -type l ! -exec test -e {} \; -print | tee "$REPORT/broken-links.txt"
+          [ ! -s "$REPORT/broken-links.txt" ] || { echo "links to missing files in the app"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "dist/Micrograph Maker.app" 2>&1 | tee "$REPORT/codesign-verify.txt"
+          codesign -dvv "dist/Micrograph Maker.app" 2>&1 | tee "$REPORT/codesign-info.txt"
+          python desktop/ci/run_checks.py minos "dist/Micrograph Maker.app"
+
+      - name: Browser for the checks
+        run: |
+          python -m pip install playwright==1.64.1
+          python -m playwright install chromium
+
+      - name: Check the server in a browser
+        run: python desktop/ci/run_checks.py server
+
+      - name: Check the app window (upload, downloads)
+        run: python desktop/ci/run_checks.py window
+
+      - name: Check the save dialog and the stop of the server
+        run: python desktop/ci/run_checks.py dialog
+
+      - name: Package (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p out dmg
+          ditto "dist/Micrograph Maker.app" "dmg/Micrograph Maker.app"
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Micrograph Maker $VERSION" -srcfolder dmg -ov -format UDZO "out/MicrographMaker-$VERSION-mac.dmg" 2>&1 | tee "$REPORT/dmg.log"
+          hdiutil attach -nobrowse -readonly "out/MicrographMaker-$VERSION-mac.dmg" -mountpoint /tmp/mm-dmg 2>&1 | tee -a "$REPORT/dmg.log"
+          codesign --verify --deep --strict --verbose=2 "/tmp/mm-dmg/Micrograph Maker.app" 2>&1 | tee "$REPORT/codesign-verify-dmg.txt"
+          ls -la /tmp/mm-dmg | tee -a "$REPORT/dmg.log"
+          hdiutil detach /tmp/mm-dmg
+          ls -la out | tee "$REPORT/out.txt"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MSYS_NO_PATHCONV: '1'
+        run: |
+          mkdir -p out
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          [ -f "$ISCC" ] || choco install innosetup --no-progress -y 2>&1 | tail -3
+          "$ISCC" "/DAppVersion=$VERSION" desktop/installer.iss 2>&1 | tee "$REPORT/inno.log"
+          cp "installer/MicrographMaker-$VERSION-windows-setup.exe" out/
+          (cd dist && 7z a -tzip "../out/MicrographMaker-$VERSION-windows.zip" MicrographMaker > /dev/null)
+          ls -la out | tee "$REPORT/out.txt"
+
+      - name: Check the installer (Windows)
+        if: runner.os == 'Windows'
+        run: python desktop/ci/run_checks.py installer "out/MicrographMaker-$VERSION-windows-setup.exe"
+
+      - name: Results to the draft release desktop-ci
+        if: always()
+        run: |
+          python -c "import os, shutil; shutil.make_archive(os.environ['REPORT'], 'zip', os.environ['REPORT'])"
+          files=("$REPORT.zip")
+          for f in out/*; do [ -f "$f" ] && files+=("$f"); done
+          python desktop/ci/release.py upload "${{ needs.prepare.outputs.ci_release }}" "${files[@]}"
+
+      - name: Apps to the release of this version (a draft until it is published)
+        if: needs.prepare.outputs.app_release != ''
+        run: python desktop/ci/release.py upload "${{ needs.prepare.outputs.app_release }}" out/*
+
+  publish:
+    needs: [prepare, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 desktop/ci/release.py publish "${{ needs.prepare.outputs.app_release }}"

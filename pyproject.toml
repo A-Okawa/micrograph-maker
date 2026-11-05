@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edsfig"
+version = "0.11.0"
+description = "AZtec EDS reports (.docx) and SEM / TEM images (incl. .dm3/.dm4) to publication figures without degrading pixels"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "pillow>=10.0", "matplotlib>=3.8"]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.30,<2"]
+
+[project.scripts]
+edsfig = "edsfig.cli:main"
+
+[tool.setuptools]
+packages = ["edsfig"]
+
+[tool.setuptools.package-data]
+edsfig = ["assets/fonts/*", "assets/*.json"]
