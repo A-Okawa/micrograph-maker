@@ -30,6 +30,7 @@ import numpy as np
 from PIL import Image
 
 from . import textread
+from .i18n import join, msg
 
 RASTER_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif"}
 
@@ -201,15 +202,17 @@ def load_sources(path_or_bytes, name: str | None = None) -> list[SourceImage]:
         img8 = dm.to_8bit(im.data)
         rgb = img8 if img8.ndim == 3 else np.repeat(img8[..., None], 3, axis=2)
         rgba = np.concatenate([rgb, np.full(rgb.shape[:2] + (1,), 255, np.uint8)], axis=2)
-        note = ""
+        notes = []
         u = im.units[0].strip()
         reciprocal = u.startswith("1/") or u.endswith("-1") or u.endswith("⁻¹")
         if im.um_per_px is None:
-            note = (f"単位が {u} のため（回折像など）実空間のスケールバーは付けません" if u else "較正情報がありません")
+            notes.append(msg("単位が {0} のため（回折像など）実空間のスケールバーは付けません", u) if u else msg("較正情報がありません"))
         elif abs(im.scale[0] - im.scale[1]) > 1e-6 * max(im.scale):
-            note = f"画素が正方形ではありません（x {im.scale[0]:g}, y {im.scale[1]:g} {im.units[0]}）。画素はそのまま並べ、スケールは x を使います"
+            notes.append(msg("画素が正方形ではありません（x {0:g}, y {1:g} {2}）。画素はそのまま並べ、スケールは x を使います",
+                             im.scale[0], im.scale[1], im.units[0]))
         if im.frames > 1:
-            note = (note + "。" if note else "") + f"{im.frames} 枚の重ね（スタック）のうち1枚目を使います"
+            notes.append(msg("{0} 枚の重ね（スタック）のうち1枚目を使います", im.frames))
+        note = join("。", notes) if notes else ""
         return [SourceImage(name=name, rgba=rgba, origin=name, order=0, meta_um_per_px=im.um_per_px, note=note,
                             reciprocal=reciprocal, uid=uid)]
 
@@ -682,10 +685,10 @@ def _cross_check(panels: list[Panel], warnings: list[str], set_name: str) -> Non
         seen: dict[str, list[str]] = {}
         for p, f in fields:
             seen.setdefault(f"{f:.4g} µm", []).append(names.get(p.kind, p.kind))
-        parts = [f"{'・'.join(sorted(set(k)))} {v}" for v, k in seen.items()]
-        where = f"{set_name}：" if set_name else ""
-        warnings.append(f"[scale] {where}視野幅が画像間で一致しません（" + "／".join(parts) +
-                        "）。同じ視野のはずなので、スケール値の読み取りを確認してください。")
+        parts = [msg("{0} {1}", join("・", [msg(n) for n in sorted(set(k))]), v) for v, k in seen.items()]
+        where = msg("{0}：", set_name) if set_name else ""
+        warnings.append(msg("[scale] {0}", msg("{0}視野幅が画像間で一致しません（{1}）。同じ視野のはずなので、スケール値の読み取りを確認してください。",
+                                               where, join("／", parts))))
     for p in panels:
         if p.um_per_px is None and p.kind in regular:
             p.um_per_px, p.scale_source = fw / p.body_size[0], "bar"

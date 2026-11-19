@@ -17,5 +17,14 @@ SEM・TEM・EPMA の像と EDS・WDS マップを並べた論文用の図を作�
 1. `MicrographMaker-*-windows-setup.exe` をダブルクリックします。「Windows によって PC が保護されました」と出たら「詳細情報」→「実行」を押します。
 2. 案内に沿って進めます（管理者の権限は要りません）。デスクトップの Micrograph Maker のアイコンで開きます。
 
+画面の言語は、左上の「🌐 Language / 言語」で 日本語・English・Tiếng Việt・ไทย を切り替えられます（最初は PC の言語で開き、選んだ言語は次回も使われます）。
+
 最初の 1 回は、開くまでに 1 分ほどかかることがあります。窓を閉じるとアプリは終わります。
 アプリに Apple や Microsoft の署名が無いので、最初だけ上の確認が出ます（Windows 11 の「スマート アプリ コントロール」がオンの PC では開けません）。
+
+---
+
+**English** — Micrograph Maker makes figures for papers from SEM / TEM / EPMA images and EDS / WDS maps. No Python or terminal is needed, and your data stay on your PC. Choose the screen language (日本語, English, Tiếng Việt, ไทย) at the top left of the app.
+
+- **Mac** (Apple silicon, macOS 12 or later): open `MicrographMaker-*-mac.dmg` and drag Micrograph Maker to Applications. On the first start macOS says it cannot verify the app: press Done, open System Settings → Privacy & Security, press “Open Anyway” next to Micrograph Maker and confirm.
+- **Windows 10 / 11**: run `MicrographMaker-*-windows-setup.exe`. If “Windows protected your PC” appears, press “More info” → “Run anyway”. (If you cannot install: unpack `MicrographMaker-*-windows.zip` and run `MicrographMaker.exe` in the folder.) PCs with Smart App Control turned on cannot open the app.

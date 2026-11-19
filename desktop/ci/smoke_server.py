@@ -146,6 +146,17 @@ with sync_playwright() as p:
     ok(pg.locator(EXC).count() == 0, 'no error at the end')
     pg.screenshot(path=os.path.join(OUT, f'{MODE}-3-sem.png'), full_page=True)
 
+    # the other screen languages (a new session each: the files are not there, the first page is)
+    for code, word in (('en', 'Output size'), ('vi', 'Kích thước xuất'), ('th', 'ขนาดผลลัพธ์')):
+        pg2 = b.new_page(viewport={'width': 1500, 'height': 1200})
+        pg2.goto(BASE + '/?lang=' + code)
+        pg2.wait_for_selector('input[type="file"]', state='attached', timeout=120000)
+        settle(pg2)
+        side = pg2.locator('[data-testid="stSidebar"]').inner_text()
+        ok(word in side and pg2.locator(EXC).count() == 0, f'the screen in {code}: "{word}" in the sidebar, no error')
+        pg2.screenshot(path=os.path.join(OUT, f'{MODE}-4-{code}.png'))
+        pg2.close()
+
     if MODE == 'browser':
         pg.get_by_role('button', name='アプリを終了').click()
         pg.get_by_role('button', name='終了する').click()

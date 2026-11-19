@@ -32,6 +32,7 @@ from matplotlib.patches import Rectangle
 from PIL import Image
 
 from .aztec import Panel
+from .i18n import msg
 
 FONT_FAMILY = ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"]
 # applied only while drawing/saving, so the user's own matplotlib settings are untouched
@@ -483,7 +484,7 @@ def _layout_rows(items: list[Item], st: Style) -> tuple[list[Placed], Geometry]:
     rows = _rows(items, ncols, st.row_counts)
     h_mm = _row_height_mm(st, rows)
     if not h_mm > 0:
-        raise ValueError("出力サイズに対して、間隔・余白が大きすぎます")
+        raise ValueError(msg("出力サイズに対して、間隔・余白が大きすぎます"))
     if st.dpi:
         ppm = st.dpi / 25.4
         hpx = float(max(8, math.floor(h_mm * ppm + 1e-6)))
@@ -538,7 +539,7 @@ def free_parts(items: list[Item], spec: str):
     by_ref = dict(zip(numbers(items), items))
     node = T.prune(node, set(by_ref))
     if node is None:
-        raise ValueError("配置に、図に使う画像の番号がありません")
+        raise ValueError(msg("配置に、図に使う画像の番号がありません"))
     return node, by_ref
 
 
@@ -552,7 +553,7 @@ def _layout_tree(items: list[Item], st: Style) -> tuple[list[Placed], Geometry]:
     h_req = st.height_mm - 2 * st.margin_mm
     use_w, use_h = st.size_mode in ("width", "box"), st.size_mode in ("height", "box")
     if (use_w and w_req <= 0) or (use_h and h_req <= 0):
-        raise ValueError("出力サイズに対して、間隔・余白が大きすぎます")
+        raise ValueError(msg("出力サイズに対して、間隔・余白が大きすぎます"))
     wc, hc, rects = T.solve(node, aspect, st.gap_mm, width=w_req if use_w else None, height=h_req if use_h else None)
     fig_w = st.width_mm if use_w else wc + 2 * st.margin_mm
     fig_h = st.height_mm if use_h else hc + 2 * st.margin_mm
@@ -587,7 +588,7 @@ def _layout_tree(items: list[Item], st: Style) -> tuple[list[Placed], Geometry]:
 def layout(items: list[Item], st: Style) -> tuple[list[Placed], Geometry]:
     items = [it for it in items if it.panel is not None]
     if not items:
-        raise ValueError("配置する画像がありません")
+        raise ValueError(msg("配置する画像がありません"))
     items = resolved(items, st)
     if st.align == "free":
         return _layout_tree(items, st)
@@ -599,7 +600,7 @@ def layout(items: list[Item], st: Style) -> tuple[list[Placed], Geometry]:
     A = cell_aspect(placed)
     cw_mm = _cell_mm(st, ncols, nrows, A)
     if not cw_mm > 0:
-        raise ValueError("出力サイズに対して、間隔・余白が大きすぎます")
+        raise ValueError(msg("出力サイズに対して、間隔・余白が大きすぎます"))
     # resolution: px per mm
     if st.dpi:
         ppm = st.dpi / 25.4
@@ -658,7 +659,7 @@ def check_aspect(fig: Figure, placed: list[Placed], g: Geometry) -> None:
         w, h = pos.width * g.width, pos.height * g.height
         iw, ih = p.item.size
         if abs((w / h) / (iw / ih) - 1) > 1e-6:
-            raise RuntimeError(f"縦横比が変わる配置になりました（{p.item.panel.src.name}）。このエラーは不具合です。")
+            raise RuntimeError(msg("縦横比が変わる配置になりました（{0}）。このエラーは不具合です。", p.item.panel.src.name))
 
 
 # --------------------------------------------------------------------------- drawing

@@ -69,6 +69,18 @@ Streamlit 1.30 以降で動きます（1.30・1.32・1.45・1.66 で確認）。
    自由配置のときは、ここに配置を書く欄が出ます。「プレビューに番号を表示」で各画像の番号（表の「順」）が中央に出ます（書き出しには入りません）
 5. **書き出し**
 
+## 画面の言語（日本語・English・Tiếng Việt・ไทย）
+
+サイドバーのいちばん上の「🌐 Language / 言語」で切り替えます。替わるのは画面の表示だけで、図に入る文字（ラベルなど）は入力したままです。
+設定・読み込んだファイル・表の内容は、切り替えてもそのまま残ります。作業ファイル（.edsfig）はどの言語で保存しても同じ中身で、
+別の言語の画面でも開けます。
+
+- アドレスの末尾に `?lang=en`（`vi`・`th`・`ja`）を付けると、その言語で始まります。環境変数 `EDSFIG_LANG` でも選べます
+- PC 版は最初は PC の言語で開き、選んだ言語を覚えて次回もその言語で開きます
+- 訳は `edsfig/i18n_text.py` に、日本語・英語・ベトナム語・タイ語を1行ずつ並べてあります。直すときはこのファイルだけを書き換えます
+  （画面の文を足したら `python tests/test_i18n.py` が訳の抜けを知らせます）
+- ベトナム語とタイ語は母語の人の確認をまだ受けていません。おかしな表現があれば、上のファイルを直してください
+
 ## PC 版（Mac・Windows のアプリ。Python なしで使える）
 
 [Releases](https://github.com/A-Okawa/micrograph-maker/releases) からダウンロードします（figapp の PC 版と同じ作り）。
@@ -425,6 +437,8 @@ edsfig/tree.py         自由配置（番号で書いた入れ子の行・列の
 edsfig/project.py      作業ファイル（.edsfig：元のファイルを無圧縮で＋設定）の保存と読み込み
 edsfig/sheet.py        JEOL EPMA のマップ画面（青緑のタイル）からのマップの切り出しと、名前・スケールバーの位置
 edsfig/cli.py          コマンドライン
+edsfig/i18n.py         画面の言語（日本語・英語・ベトナム語・タイ語）の切り替え
+edsfig/i18n_text.py    画面の文の訳（4 言語を並べた表）
 edsfig/assets/         読み取り用フォント（Inter・Carlito・Liberation Sans（標準・太字）：SIL OFL、FreeMono：GPL＋フォント例外）と初期の記憶
 tests/                 自己テスト（python tests/test_layout.py、test_free.py、test_layered.py、test_project.py、test_sheet.py、test_serve.py、test_sem.py、test_tem.py、test_dm.py、test_style.py、test_rotate.py、test_order.py など）
 ```

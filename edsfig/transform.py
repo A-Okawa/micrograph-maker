@@ -18,6 +18,8 @@ from collections import OrderedDict
 import numpy as np
 from PIL import Image
 
+from .i18n import join, msg
+
 _CACHE: OrderedDict = OrderedDict()  # turned pictures, reused between redraws
 _CACHE_MAX = 24
 
@@ -102,13 +104,13 @@ def rotate(img: np.ndarray, angle_cw: float = 0.0, flip_h: bool = False, flip_v:
 
 
 def describe(angle_cw: float, flip_h: bool = False, flip_v: bool = False) -> str:
-    """Short Japanese description, e.g. '時計回り 90°・左右反転'."""
+    """Short description, e.g. '時計回り 90°・左右反転' (shown in the language of the screen by i18n.show)."""
     parts = []
     a = _norm(angle_cw)
     if abs(a) > 1e-9:
-        parts.append(f"{'時計回り' if a > 0 else '反時計回り'} {abs(a):g}°")
+        parts.append(msg("時計回り {0:g}°", abs(a)) if a > 0 else msg("反時計回り {0:g}°", abs(a)))
     if flip_h:
-        parts.append("左右反転")
+        parts.append(msg("左右反転"))
     if flip_v:
-        parts.append("上下反転")
-    return "・".join(parts) or "なし"
+        parts.append(msg("上下反転"))
+    return join("・", parts) if parts else msg("なし")

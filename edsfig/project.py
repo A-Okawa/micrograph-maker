@@ -17,6 +17,8 @@ import zipfile
 from datetime import datetime
 from pathlib import PurePosixPath
 
+from .i18n import msg
+
 EXT = ".edsfig"
 MAGIC = "edsfig-work"
 FORMAT = 1
@@ -73,25 +75,25 @@ def unpack(data: bytes) -> tuple[dict, list[tuple[str, bytes, str]]]:
     try:
         z = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as e:
-        raise ProjectError("作業ファイルとして開けません（壊れているか、別の種類のファイルです）") from e
+        raise ProjectError(msg("作業ファイルとして開けません（壊れているか、別の種類のファイルです）")) from e
     with z:
         try:
             doc = json.loads(z.read(STATE).decode("utf-8"))
         except KeyError as e:
-            raise ProjectError("作業ファイルではありません（設定 edsfig.json が入っていません）") from e
+            raise ProjectError(msg("作業ファイルではありません（設定 edsfig.json が入っていません）")) from e
         except (ValueError, UnicodeDecodeError, zipfile.BadZipFile) as e:
-            raise ProjectError("作業ファイルの設定が壊れています") from e
+            raise ProjectError(msg("作業ファイルの設定が壊れています")) from e
         if not isinstance(doc, dict) or doc.get("format") != MAGIC:
-            raise ProjectError("作業ファイルではありません")
+            raise ProjectError(msg("作業ファイルではありません"))
         try:
             version = int(doc.get("version", 0))
         except (TypeError, ValueError):
             version = 0
         if version > FORMAT:
-            raise ProjectError("新しい版のアプリで保存された作業ファイルです。アプリを更新してから開いてください")
+            raise ProjectError(msg("新しい版のアプリで保存された作業ファイルです。アプリを更新してから開いてください"))
         entries = doc.get("files") or []
         if not isinstance(entries, list) or not isinstance(doc.get("state", {}), dict):
-            raise ProjectError("作業ファイルの設定が壊れています")
+            raise ProjectError(msg("作業ファイルの設定が壊れています"))
         files, total = [], 0
         for e in entries:
             if not isinstance(e, dict) or not e.get("path"):
@@ -100,17 +102,17 @@ def unpack(data: bytes) -> tuple[dict, list[tuple[str, bytes, str]]]:
             try:
                 info = z.getinfo(e["path"])
             except KeyError as err:
-                raise ProjectError(f"作業ファイルの中に {name} がありません（壊れています）") from err
+                raise ProjectError(msg("作業ファイルの中に {0} がありません（壊れています）", name)) from err
             total += info.file_size
             if total > MAX_TOTAL:
-                raise ProjectError("作業ファイルが大きすぎます")
+                raise ProjectError(msg("作業ファイルが大きすぎます"))
             try:
                 b = z.read(info)
             except (zipfile.BadZipFile, OSError) as err:
-                raise ProjectError(f"作業ファイルの中の {name} が壊れています") from err
+                raise ProjectError(msg("作業ファイルの中の {0} が壊れています", name)) from err
             h = digest(b)
             if e.get("md5") and h != e["md5"]:
-                raise ProjectError(f"作業ファイルの中の {name} が壊れています")
+                raise ProjectError(msg("作業ファイルの中の {0} が壊れています", name))
             files.append((name, b, h))
     return doc, files
 

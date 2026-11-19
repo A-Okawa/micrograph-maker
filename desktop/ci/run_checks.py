@@ -149,7 +149,7 @@ def window(save):
     shutil.rmtree(st, ignore_errors=True)
     os.makedirs(st)
     report_file = samples(tag)[0]                                  # the Word report
-    env = dict(os.environ, MM_DATA_DIR=data, EDSFIG_HOME=home, MM_SELFTEST=st, MM_SELFTEST_CLOSE='1',
+    env = dict(os.environ, MM_DATA_DIR=data, EDSFIG_HOME=home, MM_SELFTEST=st, MM_SELFTEST_CLOSE='1', MM_LANG='ja',
                MM_SELFTEST_FILES=report_file)
     if save:
         env['MM_SELFTEST_SAVE'] = os.path.join(st, 'saved')

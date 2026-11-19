@@ -27,15 +27,41 @@ APP = 'Micrograph Maker'                      # 窓・メニュー・メッセ�
 FROZEN = getattr(sys, 'frozen', False)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-TEXT = {
-    'loading': '起動しています…',
-    'first': '初めて開くときは 1 分ほどかかることがあります。',
-    'failed': f'{APP} を起動できませんでした。もう一度開いてみてください。続くときは、次のフォルダの logs の中身を管理者に送ってください。',
-    'running': f'{APP} はすでに起動しています。タスクバーの {APP} の窓を使ってください。',
-    'all_files': 'すべてのファイル',
-    'quit': f'{APP} を終了しますか？保存していない作業は消えます。',
+LANGS = ('ja', 'en', 'vi', 'th')
+LANG = 'ja'                                   # 画面の言語（run_app が start_language() で決める）
+_TEXT = {
+    'loading': {'ja': '起動しています…', 'en': 'Starting…', 'vi': 'Đang khởi động…', 'th': 'กำลังเริ่มต้น…'},
+    'first': {'ja': '初めて開くときは 1 分ほどかかることがあります。',
+              'en': 'The first start can take about a minute.',
+              'vi': 'Lần mở đầu tiên có thể mất khoảng một phút.',
+              'th': 'การเปิดครั้งแรกอาจใช้เวลาประมาณหนึ่งนาที'},
+    'failed': {'ja': f'{APP} を起動できませんでした。もう一度開いてみてください。続くときは、次のフォルダの logs の中身を管理者に送ってください。',
+               'en': f'{APP} could not start. Try opening it again. If it keeps failing, send the files in the logs folder '
+                     'below to the administrator.',
+               'vi': f'Không khởi động được {APP}. Hãy thử mở lại. Nếu vẫn lỗi, hãy gửi các tệp trong thư mục logs dưới '
+                     'đây cho người quản lý.',
+               'th': f'ไม่สามารถเริ่ม {APP} ได้ ลองเปิดอีกครั้ง หากยังไม่ได้ โปรดส่งไฟล์ในโฟลเดอร์ logs ด้านล่างให้ผู้ดูแล'},
+    'running': {'ja': f'{APP} はすでに起動しています。タスクバーの {APP} の窓を使ってください。',
+                'en': f'{APP} is already running. Use its window in the taskbar.',
+                'vi': f'{APP} đang chạy. Hãy dùng cửa sổ {APP} trên thanh tác vụ.',
+                'th': f'{APP} กำลังทำงานอยู่แล้ว โปรดใช้หน้าต่าง {APP} บนแถบงาน'},
+    'all_files': {'ja': 'すべてのファイル', 'en': 'All files', 'vi': 'Tất cả các tệp', 'th': 'ไฟล์ทั้งหมด'},
+    'quit': {'ja': f'{APP} を終了しますか？保存していない作業は消えます。',
+             'en': f'Quit {APP}? Work you have not saved will be lost.',
+             'vi': f'Thoát {APP}? Phần việc chưa lưu sẽ bị mất.',
+             'th': f'ออกจาก {APP} หรือไม่? งานที่ยังไม่ได้บันทึกจะหายไป'},
 }
-# Mac のメニューと保存の窓（pywebview の表示）
+
+
+class _Texts:
+    """TEXT['quit']: the text in the language of the screen."""
+
+    def __getitem__(self, key):
+        return _TEXT[key].get(LANG) or _TEXT[key]['ja']
+
+
+TEXT = _Texts()
+# Mac のメニューと保存の窓（pywebview の表示）。日本語以外は pywebview の英語のまま
 MENU_JA = {
     'global.ok': 'OK', 'global.quit': '終了', 'global.cancel': 'キャンセル', 'global.saveFile': 'ファイルを保存',
     'cocoa.menu.about': f'{APP} について', 'cocoa.menu.services': 'サービス', 'cocoa.menu.view': '表示',
@@ -44,6 +70,42 @@ MENU_JA = {
     'cocoa.menu.cut': 'カット', 'cocoa.menu.copy': 'コピー', 'cocoa.menu.paste': 'ペースト', 'cocoa.menu.selectAll': 'すべてを選択',
     'windows.fileFilter.allFiles': 'すべてのファイル', 'windows.fileFilter.otherFiles': 'その他のファイル',
 }
+
+
+# ---------------------------------------------------------------------------------------------- language
+def system_language():
+    """ja, vi, th or en, from the language of the OS."""
+    tag = ''
+    try:
+        if sys.platform == 'darwin':
+            from Foundation import NSLocale
+            langs = NSLocale.preferredLanguages()
+            tag = str(langs[0]) if langs else ''
+        elif os.name == 'nt':
+            import ctypes
+            primary = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
+            tag = {0x11: 'ja', 0x2A: 'vi', 0x1E: 'th'}.get(primary, 'en')
+        else:
+            import locale
+            tag = locale.getlocale()[0] or os.environ.get('LANG', '')
+    except Exception:  # noqa: BLE001
+        pass
+    tag = (tag or '').lower()
+    return next((c for c in ('ja', 'vi', 'th') if tag.startswith(c)), 'en')
+
+
+def start_language():
+    """MM_LANG if set; else the language chosen last time in the app (prefs.json, written by app.py); else the OS language."""
+    if os.environ.get('MM_LANG') in LANGS:
+        return os.environ['MM_LANG']
+    try:
+        with open(os.path.join(data_dir(), 'prefs.json'), encoding='utf-8') as fh:
+            lang = json.load(fh).get('lang')
+        if lang in LANGS:
+            return lang
+    except (OSError, ValueError, AttributeError):
+        pass
+    return system_language()
 
 
 # ---------------------------------------------------------------------------------------------- places
@@ -253,7 +315,7 @@ def page(body):
             'border-radius:50%;animation:s 0.9s linear infinite}@keyframes s{to{transform:rotate(360deg)}}'
             'h1{font-size:20px;font-weight:600;margin:0 0 6px}p{margin:6px 0;color:#555;font-size:14px}'
             'code{font-size:12px;word-break:break-all;color:#31333F}</style></head>'
-            f'<body><div class="box" lang="ja">{body}</div></body></html>')
+            f'<body><div class="box" lang="{LANG}">{body}</div></body></html>')
 
 
 def loading_page():
@@ -389,7 +451,7 @@ def keep_file_type_in_save_dialog():
 
 def run_window(webview, proc, port, url):
     w, h = window_size(webview)
-    loc = dict(MENU_JA)
+    loc = dict(MENU_JA) if LANG == 'ja' else {}
     loc['global.quitConfirmation'] = TEXT['quit']
     window = webview.create_window(APP, html=loading_page(), width=w, height=h, min_size=(960, 640),
                                    confirm_close=not os.environ.get('MM_SELFTEST'), zoomable=True, text_select=True,
@@ -428,7 +490,9 @@ def run_browser(proc, port, url):
 def run_app(argv):
     if FROZEN or not sys.stdout:
         sys.stdout = sys.stderr = open_log('launcher.log')
-    log(f'{APP} desktop', sys.platform, sys.version.split()[0], 'frozen' if FROZEN else 'source')
+    global LANG
+    LANG = start_language()
+    log(f'{APP} desktop', sys.platform, sys.version.split()[0], 'frozen' if FROZEN else 'source', 'lang', LANG)
     if not first_instance():
         message(TEXT['running'])
         return
@@ -436,7 +500,7 @@ def run_app(argv):
     mode = 'window' if webview else 'browser'
     port = free_port()
     proc = start_server(port, mode)
-    url = f'http://127.0.0.1:{port}/'
+    url = f'http://127.0.0.1:{port}/?lang={LANG}'
     try:
         with open(os.path.join(data_dir(), 'running.json'), 'w', encoding='utf-8') as fh:
             json.dump({'pid': os.getpid(), 'server_pid': proc.pid, 'port': port, 'mode': mode, 'url': url}, fh)

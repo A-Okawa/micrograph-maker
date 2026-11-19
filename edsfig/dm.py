@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .i18n import msg
+
 _SIMPLE = {  # encoded type -> (struct/numpy code, size)
     2: ("h", 2), 3: ("i", 4), 4: ("H", 2), 5: ("I", 4), 6: ("f", 4), 7: ("d", 8),
     8: ("?", 1), 9: ("b", 1), 10: ("B", 1), 11: ("q", 8), 12: ("Q", 8),
@@ -45,7 +47,7 @@ class _Parser:
         self.d = data
         self.v = struct.unpack(">I", data[:4])[0]
         if self.v not in (3, 4):
-            raise ValueError("DigitalMicrograph 3/4 形式ではありません")
+            raise ValueError(msg("DigitalMicrograph 3/4 形式ではありません"))
         self.p = 4 + (4 if self.v == 3 else 8)  # version, file size
         self.e = "<" if struct.unpack(">I", data[self.p: self.p + 4])[0] == 1 else ">"
         self.p += 4
@@ -75,12 +77,12 @@ class _Parser:
             elif kind == 21:
                 out.append((label, self._data()))
             else:
-                raise ValueError(f"壊れたタグ（種類 {kind}）")
+                raise ValueError(msg("壊れたタグ（種類 {0}）", kind))
         return out
 
     def _data(self):
         if self.d[self.p: self.p + 4] != b"%%%%":
-            raise ValueError("壊れたタグデータ")
+            raise ValueError(msg("壊れたタグデータ"))
         self.p += 4
         n = self._count()
         info = [self._count() for _ in range(n)]
@@ -117,7 +119,7 @@ class _Parser:
                 arr = np.frombuffer(self.d, dtype=np.dtype(self.e + code), count=count, offset=self.p)
                 self.p += size * count
                 return arr
-        raise ValueError(f"未対応のデータ型 {info[:3]}")
+        raise ValueError(msg("未対応のデータ型 {0}", info[:3]))
 
 
 def _get(group: list, *path):
@@ -187,7 +189,7 @@ def read_dm(data: bytes) -> DMImage:
             if im is not None and im.data.ndim >= 2 and min(im.data.shape[:2]) > 1:
                 images.append(im)
     if not images:
-        raise ValueError("画像が入っていません（スペクトルや複素数データのみのファイル）")
+        raise ValueError(msg("画像が入っていません（スペクトルや複素数データのみのファイル）"))
     return max(images, key=lambda im: im.data.shape[0] * im.data.shape[1])
 
 

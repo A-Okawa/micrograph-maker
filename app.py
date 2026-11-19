@@ -26,7 +26,8 @@ import streamlit as st
 from PIL import Image
 
 from edsfig import __version__ as APP_VERSION
-from edsfig import aztec, textread, transform
+from edsfig import aztec, i18n, textread, transform
+from edsfig.i18n import ui
 from edsfig import order as ordering
 from appinfo import APP_NAME, APP_TAGLINE
 from edsfig import figure as F
@@ -35,6 +36,27 @@ from edsfig import sheet as SH
 from edsfig import tree as T
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔬", layout="wide")
+
+# The language of the screen (a code: ja, en, vi, th) is st.session_state["lang"]; ?lang=en in the address
+# chooses the first one.  The PC app starts in the language chosen last time (prefs.json, read by the launcher).
+i18n.use_streamlit_session("lang")
+if st.session_state.get("lang_box") in i18n.LANGUAGES:  # chosen in the box (its choices are the languages' own names)
+    st.session_state["lang"] = i18n.LANGUAGES[st.session_state["lang_box"]]
+if "lang" not in st.session_state:
+    try:
+        _ql = str(st.query_params.get("lang", "")).lower()
+    except Exception:  # (Streamlit before 1.30)
+        _ql = ""
+    st.session_state["lang"] = _ql if _ql in i18n.CODES else os.environ.get("EDSFIG_LANG", "ja")
+    if st.session_state["lang"] not in i18n.CODES:
+        st.session_state["lang"] = "ja"
+LANG = st.session_state["lang"]
+
+
+def language_box(container) -> None:
+    if st.session_state.get("lang_box") not in i18n.LANGUAGES:
+        st.session_state["lang_box"] = i18n.NAMES[LANG]
+    container.radio("🌐 Language / 言語", list(i18n.LANGUAGES), key="lang_box", horizontal=True)
 
 # Shared on the campus network (started with serve.py, or bound to an address other PCs reach): students
 # open it from their own PCs.  Their files stay in this PC's memory only; cached results go after some hours.
@@ -70,12 +92,13 @@ def lab_password() -> str:
 PASSWORD = lab_password() if SERVER else ""
 if PASSWORD and not st.session_state.get("_auth"):
     st.title(APP_NAME)
-    typed = st.text_input("パスワード", type="password", help="研究室で決めたパスワード（分からなければ管理している人に聞いてください）")
+    language_box(st)
+    typed = st.text_input(ui("パスワード"), type="password", help=ui("研究室で決めたパスワード（分からなければ管理している人に聞いてください）"))
     if typed and hmac.compare_digest(typed.strip().encode("utf-8"), PASSWORD.encode("utf-8")):
         st.session_state["_auth"] = True
         st.rerun()
     if typed:
-        st.error("パスワードが違います")
+        st.error(ui("パスワードが違います"))
     st.stop()
 
 
@@ -121,8 +144,7 @@ def toggle(container, *args, **kwargs):
 
 
 if not (hasattr(st, "data_editor") and hasattr(st, "column_config")):
-    st.error(f"このアプリには Streamlit 1.23 以降が必要です（いまは {st.__version__}）。"
-             "ターミナルで `pip install -U streamlit` を実行してから、もう一度起動してください。")
+    st.error(ui("このアプリには Streamlit 1.23 以降が必要です（いまは {0}）。ターミナルで `pip install -U streamlit` を実行してから、もう一度起動してください。", st.__version__))
     st.stop()
 
 FW_IMAGE = full_width(st.image)
@@ -142,7 +164,7 @@ FORMATS = [  # label, extension, MIME type
     ("SVG", "svg", "image/svg+xml"),
     ("画像ごと（ZIP）", "zip", "application/zip"),
 ]
-FORMAT_HELP = {"zip": "切り出した画像をPNGで保存（ラベル・バーなし）＋較正情報 calibration.json。明るさ等を変えた画像は、変える前の元画素も original/ に入ります"}
+FORMAT_HELP = {"zip": ui("切り出した画像をPNGで保存（ラベル・バーなし）＋較正情報 calibration.json。明るさ等を変えた画像は、変える前の元画素も original/ に入ります")}
 
 
 # --------------------------------------------------------------------------- cached work
@@ -151,12 +173,12 @@ def get_reader() -> textread.Reader:
     return textread.Reader()
 
 
-@st.cache_data(show_spinner="AZtecの出力を解析しています…", max_entries=64, ttl=TTL)
+@st.cache_data(show_spinner=ui("AZtecの出力を解析しています…"), max_entries=64, ttl=TTL)
 def parse_docx(data: bytes, name: str) -> aztec.Report:
     return aztec.read_report(data, name=name, reader=get_reader())
 
 
-@st.cache_data(show_spinner="EPMA のマップ画面を解析しています…", max_entries=32, ttl=TTL)
+@st.cache_data(show_spinner=ui("EPMA のマップ画面を解析しています…"), max_entries=32, ttl=TTL)
 def parse_sheet(data: bytes, name: str) -> aztec.Report:
     return aztec.read_sheet(data, name=name, reader=get_reader())
 
@@ -171,7 +193,7 @@ def is_map_window(data: bytes) -> bool:
     return SH.is_sheet(rgb)
 
 
-@st.cache_data(show_spinner="画像を解析しています…", max_entries=16, ttl=TTL)
+@st.cache_data(show_spinner=ui("画像を解析しています…"), max_entries=16, ttl=TTL)
 def parse_images(blobs: tuple, names: tuple, txts: tuple, title: str) -> aztec.Report:
     return aztec.read_images(list(zip(blobs, names)), reader=get_reader(), txts=dict(txts), name=title)
 
@@ -341,6 +363,13 @@ def crop_key(name: str, pk: str) -> str:
 def aspect_options(rep: aztec.Report) -> list[str]:
     return list(ASPECT_PRESETS) + [f"{i + 1}. {p.src.name} と同じ形" for i, p in enumerate(rep.panels)
                                    if p.kind in F.REGULAR]
+
+
+def aspect_text(choice: str) -> str:
+    """A choice of aspect_options in the language of the screen (the stored choice stays Japanese)."""
+    if choice.endswith(" と同じ形"):
+        return ui("{0} と同じ形", choice[: -len(" と同じ形")])
+    return ui(choice)
 
 
 def aspect_of(choice: str | None, rep: aztec.Report, idx: list[int]) -> float | None:
@@ -703,8 +732,8 @@ def picture_name(rep: aztec.Report, p: aztec.Panel) -> str:
     if rep.kind == "images" or (rep.kind == "mixed" and not p.set_id):
         return p.src.name
     if rep.kind == "mixed":
-        return f"{KIND_JA[p.kind]}（{Path(p.set_id).stem[:16]}）"
-    return KIND_JA[p.kind]
+        return ui("{0}（{1}）", ui(KIND_JA[p.kind]), Path(p.set_id).stem[:16])
+    return ui(KIND_JA[p.kind])
 
 
 def parse_rows(text: str) -> tuple[int, ...] | None:
@@ -980,10 +1009,10 @@ def expand_uploads(uploads: list) -> tuple[list, list[tuple[str, str]]]:
             try:
                 opened[k] = P.unpack(f.getvalue())
             except P.ProjectError as e:
-                opened[k] = str(e)
+                opened[k] = e.args[0] if e.args and isinstance(e.args[0], str) else str(e)  # (an i18n.Msg)
         got = opened[k]
         if isinstance(got, str):
-            notes.append(("error", f"{f.name}：{got}"))
+            notes.append(("error", ui("{0}：{1}", f.name, got)))
             continue
         doc, contents = got
         if k not in ss["_applied"]:
@@ -994,7 +1023,7 @@ def expand_uploads(uploads: list) -> tuple[list, list[tuple[str, str]]]:
                 inside.add(h)
                 out.append(Blob(name, data, h))
         if doc.get("with_files"):
-            notes.append(("info", f"📂 {f.name}：{doc.get('saved', '')} に保存した作業を開きました（ファイル {len(contents)} 件）"))
+            notes.append(("info", ui("📂 {0}：{1} に保存した作業を開きました（ファイル {2} 件）", f.name, doc.get('saved', ''), len(contents))))
         else:
             settings_only.append((f, doc))
     for f in plain:
@@ -1005,10 +1034,10 @@ def expand_uploads(uploads: list) -> tuple[list, list[tuple[str, str]]]:
         for f, doc in settings_only:
             miss = P.missing(doc, present)
             if miss:
-                notes.append(("warning", f"{f.name} は設定だけの作業ファイルです。元のファイルも入れてください："
-                              + "、".join(miss[:6]) + (f" ほか {len(miss) - 6} 件" if len(miss) > 6 else "")))
+                notes.append(("warning", ui("{0} は設定だけの作業ファイルです。元のファイルも入れてください：", f.name)
+                              + ui("、").join(miss[:6]) + (ui(" ほか {0} 件", len(miss) - 6) if len(miss) > 6 else "")))
             else:
-                notes.append(("info", f"📂 {f.name}：{doc.get('saved', '')} に保存した設定を当てはめました"))
+                notes.append(("info", ui("📂 {0}：{1} に保存した設定を当てはめました", f.name, doc.get('saved', ''))))
     return out, notes
 
 
@@ -1032,16 +1061,47 @@ def saved_figure(rkey: str, pks: list[str], exact: bool = False) -> dict | None:
 # --------------------------------------------------------------------------- sidebar: settings
 sb = st.sidebar
 sb.title(APP_NAME)
+language_box(sb)  # at the top: only the screen changes; texts in the figure stay as typed
+if DESKTOP and st.session_state.get("_lang_saved") != LANG:  # the PC app starts in this language next time
+    try:
+        with open(os.path.join(os.environ.get("MM_DATA_DIR", ""), "prefs.json"), "w", encoding="utf-8") as _fh:
+            json.dump({"lang": LANG}, _fh)
+    except OSError:
+        pass
+    st.session_state["_lang_saved"] = LANG
+
+
+def _key_identity() -> bool:
+    """True when a widget with a key keeps its value although its label changes (newer Streamlit)."""
+    try:
+        from streamlit.elements.lib.utils import compute_and_register_element_id
+        return "key_as_main_identity" in inspect.signature(compute_and_register_element_id).parameters
+    except Exception:
+        return False
+
+
+if st.session_state.get("_last_lang") not in (None, LANG):
+    # another language: hand every setting over to the widgets again (older Streamlit makes new widgets for the new
+    # labels; newer ones keep the widget, whose browser side would go on showing the choice in the old language)
+    for _k in list(st.session_state.keys()):  # (not buttons, the file box or the table: those cannot be set)
+        if _k in SIDEBAR or PICTURE_WIDGET.match(_k) or FIGURE_WIDGET.match(_k) or _k.startswith(("sc_", "num_")) \
+                or _k in ("fig", "fmt"):
+            st.session_state[_k] = st.session_state[_k]
+st.session_state["_last_lang"] = LANG
+# the file box keeps the language it had when files were put in (on older Streamlit a new label would empty it)
+UP_LANG = LANG if _key_identity() or not st.session_state.get("_had_files") else st.session_state.get("_up_lang", LANG)
+st.session_state["_up_lang"] = UP_LANG
 if SERVER:
-    sb.caption("研究室の共有アプリです。入れたファイルはこのアプリを動かしている PC のメモリ上だけで処理し、"
-               "保存も外部への送信もしません（作業の保存は自分の PC へのダウンロードです）。")
-uploads = sb.file_uploader("AZtecのWord出力（.docx）やSEM・TEM像を入れてください", type=UPLOAD_TYPES,
-                           accept_multiple_files=True,
-                           help="Word出力はレポートごとに1つの図。SEM・TEM像（TIFF・PNG・JPEG・BMP、DigitalMicrograph の .dm3/.dm4）は"
+    sb.caption(ui("研究室の共有アプリです。入れたファイルはこのアプリを動かしている PC のメモリ上だけで処理し、"
+               "保存も外部への送信もしません（作業の保存は自分の PC へのダウンロードです）。"))
+uploads = sb.file_uploader(i18n.translate("AZtecのWord出力（.docx）やSEM・TEM像を入れてください", UP_LANG), type=UPLOAD_TYPES,
+                           accept_multiple_files=True, key="uploads",
+                           help=i18n.translate("Word出力はレポートごとに1つの図。SEM・TEM像（TIFF・PNG・JPEG・BMP、DigitalMicrograph の .dm3/.dm4）は"
                                 "まとめて1つの図になります。SEMが画像と一緒に保存する .txt を入れると、その画素寸法を使います。"
                                 "倍率や装置が違うファイルを一度に入れても、スケールはファイルごとに読み取ります。"
                                 "JEOL EPMA のマップ画面を保存した画像は、Word 出力と同じく1枚ごとに1つの図になります。"
-                                "保存した作業ファイル（.edsfig）を入れると、保存したときの続きから作業できます。")
+                                "保存した作業ファイル（.edsfig）を入れると、保存したときの続きから作業できます。", UP_LANG))
+st.session_state["_had_files"] = bool(uploads)
 files, upload_notes = expand_uploads(list(uploads or []))  # work files opened (their settings put in place once)
 for level, text in upload_notes:
     (sb.caption if level == "info" else getattr(sb, level))(text)
@@ -1053,113 +1113,113 @@ SCREEN_TYPES = ("png", "jpg", "jpeg", "bmp", "tif", "tiff")  # a saved screen (E
 WINDOWS = {id(f) for f in files if Path(f.name).suffix.lower().lstrip(".") in SCREEN_TYPES and is_map_window(f.getvalue())}
 _n_docx = sum(1 for f in files if Path(f.name).suffix.lower() == ".docx") + len(WINDOWS)  # one figure each
 _n_img = sum(1 for f in files if Path(f.name).suffix.lower().lstrip(".") in IMAGE_TYPES and id(f) not in WINDOWS)
-combine_all = toggle(sb, "全部を1つの図にまとめる", key="combine", disabled=_n_docx + (1 if _n_img else 0) < 2,
-                     help="Word出力（EDS）とSEM・TEM像を1枚の図に並べます。Word出力ごとの画像は同じ視野として扱い"
+combine_all = toggle(sb, ui("全部を1つの図にまとめる"), key="combine", disabled=_n_docx + (1 if _n_img else 0) < 2,
+                     help=ui("Word出力（EDS）とSEM・TEM像を1枚の図に並べます。Word出力ごとの画像は同じ視野として扱い"
                           "（視野幅の照合もその中だけ）、SEM・TEM像はそれぞれ独立にスケールを読みます。"
-                          "オフのときは、Word出力ごとの図と、SEM・TEM像をまとめた図に分かれます。")
+                          "オフのときは、Word出力ごとの図と、SEM・TEM像をまとめた図に分かれます。"))
 
-sb.subheader("出力サイズ")
-size_mode = SIZE_MODES[sb.radio("決め方", list(SIZE_MODES), key="size_mode", horizontal=True,
-                                help="画像は縦横同じ倍率でしか拡大縮小しません（縦横比は元画像のまま）。"
-                                     "幅と高さの両方を指定すると、その枠に収まる最大の大きさで中央に配置し、余りは背景になります。")]
+sb.subheader(ui("出力サイズ"))
+size_mode = SIZE_MODES[sb.radio(ui("決め方"), list(SIZE_MODES), format_func=ui, key="size_mode", horizontal=True,
+                                help=ui("画像は縦横同じ倍率でしか拡大縮小しません（縦横比は元画像のまま）。"
+                                     "幅と高さの両方を指定すると、その枠に収まる最大の大きさで中央に配置し、余りは背景になります。"))]
 c1, c2 = sb.columns(2)
-width_mm = c1.number_input("幅 (mm)", 20.0, 1000.0, step=5.0, key="width_mm", disabled=size_mode == "height",
-                           help="片段 85 mm、両段 170 mm が目安")
-height_mm = c2.number_input("高さ (mm)", 20.0, 1000.0, step=5.0, key="height_mm", disabled=size_mode == "width")
+width_mm = c1.number_input(ui("幅 (mm)"), 20.0, 1000.0, step=5.0, key="width_mm", disabled=size_mode == "height",
+                           help=ui("片段 85 mm、両段 170 mm が目安"))
+height_mm = c2.number_input(ui("高さ (mm)"), 20.0, 1000.0, step=5.0, key="height_mm", disabled=size_mode == "width")
 
-sb.subheader("配置")
-free = ARRANGES[sb.radio("並べ方", list(ARRANGES), key="arrange",
-                         help="自由配置：横並びの中に縦積み、その中に 2×2 など、入れ子の配置を番号で書きます"
+sb.subheader(ui("配置"))
+free = ARRANGES[sb.radio(ui("並べ方"), list(ARRANGES), format_func=ui, key="arrange",
+                         help=ui("自由配置：横並びの中に縦積み、その中に 2×2 など、入れ子の配置を番号で書きます"
                               "（「4. プレビュー」の上の欄）。図全体を1枚として組むので、"
-                              "元素記号・スケールバーの文字とバーの太さは、どのパネルでも同じ大きさになります。")] == "free"
+                              "元素記号・スケールバーの文字とバーの太さは、どのパネルでも同じ大きさになります。"))] == "free"
 c1, c2 = sb.columns(2)
-auto_cols = toggle(c2, "列数を自動", key="auto_cols", disabled=size_mode != "box" or free,
-                   help="「幅と高さを指定」のとき、画像が一番大きくなる列数を選びます")
-ncols = c1.number_input("列数", 1, 10, step=1, key="ncols", disabled=bool(auto_cols and size_mode == "box") or free,
-                        help="自由配置では、配置の欄を「列数の並びから作り直す」ときに使います")
-rows_text = sb.text_input("行ごとの枚数（空欄＝列数ずつ）", key="rows_text", disabled=free,
-                          help="上の行から順に、1行に並べる枚数をカンマで区切って入れます。"
-                               "例：5枚を 3列で「2,3」→ 上 2枚・下 3枚。「2」だけなら上 2枚、あとは列数ずつ。",
-                          **opt(st.text_input, placeholder="例: 2,3"))
+auto_cols = toggle(c2, ui("列数を自動"), key="auto_cols", disabled=size_mode != "box" or free,
+                   help=ui("「幅と高さを指定」のとき、画像が一番大きくなる列数を選びます"))
+ncols = c1.number_input(ui("列数"), 1, 10, step=1, key="ncols", disabled=bool(auto_cols and size_mode == "box") or free,
+                        help=ui("自由配置では、配置の欄を「列数の並びから作り直す」ときに使います"))
+rows_text = sb.text_input(ui("行ごとの枚数（空欄＝列数ずつ）"), key="rows_text", disabled=free,
+                          help=ui("上の行から順に、1行に並べる枚数をカンマで区切って入れます。"
+                               "例：5枚を 3列で「2,3」→ 上 2枚・下 3枚。「2」だけなら上 2枚、あとは列数ずつ。"),
+                          **opt(st.text_input, placeholder=ui("例: 2,3")))
 row_counts = parse_rows(rows_text)
 if rows_text.strip() and row_counts is None:
-    sb.caption("⚠ 1以上の数字をカンマで区切って入れてください（例: 2,3）。今は列数ずつ並べています。")
-row_align = ROW_ALIGNS[sb.selectbox("枚数の少ない行の位置", list(ROW_ALIGNS), key="row_align", disabled=free,
-                                    help="ほかの行より枚数の少ない行（例：2-3 の上の行）を、左寄せ・中央・右寄せのどこに置くか。"
-                                         "自動＝「幅を揃える」「トリミング」では左寄せ、「高さを揃える」では中央")]
+    sb.caption(ui("⚠ 1以上の数字をカンマで区切って入れてください（例: 2,3）。今は列数ずつ並べています。"))
+row_align = ROW_ALIGNS[sb.selectbox(ui("枚数の少ない行の位置"), list(ROW_ALIGNS), format_func=ui, key="row_align", disabled=free,
+                                    help=ui("ほかの行より枚数の少ない行（例：2-3 の上の行）を、左寄せ・中央・右寄せのどこに置くか。"
+                                         "自動＝「幅を揃える」「トリミング」では左寄せ、「高さを揃える」では中央"))]
 c1, c2 = sb.columns(2)
-gap_mm = c1.number_input("間隔 (mm)", 0.0, 20.0, step=0.25, key="gap_mm")
-margin_mm = c2.number_input("外余白 (mm)", 0.0, 30.0, step=0.5, key="margin_mm")
-align = ALIGNS[sb.radio("形の違う画像の揃え方", list(ALIGNS), key="align", disabled=free,
-                        help="幅を揃える：同じ幅で並べ、高さの違いは余白になります。"
+gap_mm = c1.number_input(ui("間隔 (mm)"), 0.0, 20.0, step=0.25, key="gap_mm")
+margin_mm = c2.number_input(ui("外余白 (mm)"), 0.0, 30.0, step=0.5, key="margin_mm")
+align = ALIGNS[sb.radio(ui("形の違う画像の揃え方"), list(ALIGNS), format_func=ui, key="align", disabled=free,
+                        help=ui("幅を揃える：同じ幅で並べ、高さの違いは余白になります。"
                              "高さを揃える：同じ高さで横に並べ、幅は画像ごとの形のままです。"
                              "トリミングして揃える：全部の画像を同じ縦横比に切り取り、幅も高さも揃えます"
                              "（切り取る位置と範囲は画像ごとに「2.」で調整）。"
                              "どの方法でも、画像は縦横同じ倍率でしか拡大縮小しません。"
-                             "自由配置では使いません（横並びは高さ、縦積みは幅が自動で揃います）。")]
+                             "自由配置では使いません（横並びは高さ、縦積みは幅が自動で揃います）。"))]
 if free:
     align = "free"
-valign = VALIGNS[sb.selectbox("縦の位置（幅を揃えるとき）", list(VALIGNS), key="valign", disabled=align != "width",
-                              help="背の低い画像を、マスの上・中央・下のどこに置くか")]
-big = toggle(sb, "電子像を 2×2 で大きく", key="big", disabled=align in ("height", "free") or bool(row_counts),
-             help="「幅を揃える」「トリミングして揃える」のときに使えます（行ごとの枚数を指定したときは使えません）")
-bg = sb.radio("背景", list(BACKGROUNDS), key="bg", horizontal=True)
+valign = VALIGNS[sb.selectbox(ui("縦の位置（幅を揃えるとき）"), list(VALIGNS), format_func=ui, key="valign", disabled=align != "width",
+                              help=ui("背の低い画像を、マスの上・中央・下のどこに置くか"))]
+big = toggle(sb, ui("電子像を 2×2 で大きく"), key="big", disabled=align in ("height", "free") or bool(row_counts),
+             help=ui("「幅を揃える」「トリミングして揃える」のときに使えます（行ごとの枚数を指定したときは使えません）"))
+bg = sb.radio(ui("背景"), list(BACKGROUNDS), format_func=ui, key="bg", horizontal=True)
 
-sb.subheader("ラベル（元素記号・サンプル名）")
-label_on = toggle(sb, "表示する", key="label_on")
+sb.subheader(ui("ラベル（元素記号・サンプル名）"))
+label_on = toggle(sb, ui("表示する"), key="label_on")
 c1, c2 = sb.columns(2)
-label_pt = c1.number_input("文字 (pt)", 4.0, 48.0, step=0.5, key="label_pt")
-label_col = c2.selectbox("色", list(LABEL_COLORS), key="label_col",
-                         help="重ね合わせ図の元素記号は、どの設定でも色見本（凡例）の色で入ります")
+label_pt = c1.number_input(ui("文字 (pt)"), 4.0, 48.0, step=0.5, key="label_pt")
+label_col = c2.selectbox(ui("色"), list(LABEL_COLORS), format_func=ui, key="label_col",
+                         help=ui("重ね合わせ図の元素記号は、どの設定でも色見本（凡例）の色で入ります"))
 c1, c2 = sb.columns(2)
-label_outline = toggle(c1, "縁取り", key="lo", help="白い文字は黒で、黒い文字は白で縁取ります")
-label_corner = c2.selectbox("位置", list(CORNERS), key="label_corner")
+label_outline = toggle(c1, ui("縁取り"), key="lo", help=ui("白い文字は黒で、黒い文字は白で縁取ります"))
+label_corner = c2.selectbox(ui("位置"), list(CORNERS), format_func=ui, key="label_corner")
 
-sb.subheader("スケールバー")
-bar_target = sb.radio("付ける画像", list(BAR_TARGETS), key="bar_target", horizontal=True)
+sb.subheader(ui("スケールバー"))
+bar_target = sb.radio(ui("付ける画像"), list(BAR_TARGETS), format_func=ui, key="bar_target", horizontal=True)
 c1, c2 = sb.columns(2)
-bar_len = c1.number_input("長さ (µm)", 0.0, 100000.0, step=1.0, format="%g", key="bar_len",
-                          help="0 = 画像ごとに、視野幅の約1/4〜1/3になる切りのよい長さを自動で選びます")
-bar_corner = c2.selectbox("位置 ", list(BAR_CORNERS), key="bar_corner")
+bar_len = c1.number_input(ui("長さ (µm)"), 0.0, 100000.0, step=1.0, format="%g", key="bar_len",
+                          help=ui("0 = 画像ごとに、視野幅の約1/4〜1/3になる切りのよい長さを自動で選びます"))
+bar_corner = c2.selectbox(ui("位置 "), list(BAR_CORNERS), format_func=ui, key="bar_corner")
 c1, c2 = sb.columns(2)
-bar_col = c1.selectbox("色 ", list(BAR_COLORS), key="bar_col",
-                       help="自動＝バーと数値を置く場所が明るい画像には黒、暗い画像には白。"
-                            "画像ごとに変えるときは「2. 画像ごとの調整」で選びます")
-bar_pt = c2.number_input("文字 (pt) ", 4.0, 48.0, step=0.5, key="bar_pt")
+bar_col = c1.selectbox(ui("色 "), list(BAR_COLORS), format_func=ui, key="bar_col",
+                       help=ui("自動＝バーと数値を置く場所が明るい画像には黒、暗い画像には白。"
+                            "画像ごとに変えるときは「2. 画像ごとの調整」で選びます"))
+bar_pt = c2.number_input(ui("文字 (pt) "), 4.0, 48.0, step=0.5, key="bar_pt")
 c1, c2 = sb.columns(2)
-bar_text = toggle(c1, "数値を表示", key="bar_text")
-bar_outline = toggle(c2, "縁取り ", key="bo", help="白いバーは黒で、黒いバーは白で縁取ります")
-bar_thick = sb.slider("太さ (pt)", 0.5, 8.0, step=0.25, key="bar_thick_pt",
-                      help="どのパネルでも同じ太さになります（画像の大きさによりません）")
+bar_text = toggle(c1, ui("数値を表示"), key="bar_text")
+bar_outline = toggle(c2, ui("縁取り "), key="bo", help=ui("白いバーは黒で、黒いバーは白で縁取ります"))
+bar_thick = sb.slider(ui("太さ (pt)"), 0.5, 8.0, step=0.25, key="bar_thick_pt",
+                      help=ui("どのパネルでも同じ太さになります（画像の大きさによりません）"))
 
-sb.subheader("画素")
-res_mode = sb.radio("解像度", RES_MODES, key="res_mode", horizontal=True,
-                    help="整数倍：最も細かい画像の1画素を N×N 画素で出力。縮小は起きません。")
+sb.subheader(ui("画素"))
+res_mode = sb.radio(ui("解像度"), RES_MODES, format_func=ui, key="res_mode", horizontal=True,
+                    help=ui("整数倍：最も細かい画像の1画素を N×N 画素で出力。縮小は起きません。"))
 c1, c2 = sb.columns(2)
-oversample = c1.number_input("倍率 N", 1, 8, step=1, key="oversample", disabled=res_mode != RES_MODES[0])
+oversample = c1.number_input(ui("倍率 N"), 1, 8, step=1, key="oversample", disabled=res_mode != RES_MODES[0])
 dpi = c2.number_input("dpi", 72, 2400, step=50, key="dpi", disabled=res_mode != RES_MODES[1])
-rot_fill = ROT_FILLS[sb.radio("斜めに回転したときの四隅", list(ROT_FILLS), key="rot_fill", horizontal=True,
-                              help="90°単位以外の回転でできる四隅の空き。切り取る＝空きの無い最大の長方形を使います")]
-rot_resample = ROT_RESAMPLES[sb.radio("回転の補間（90°単位以外）", list(ROT_RESAMPLES), key="rot_resample", horizontal=True,
-                                      help="90°単位の回転と反転は画素を並べ替えるだけで、補間はしません。"
-                                           "それ以外の角度は画素を作り直します。最近傍は元の画素値をそのまま使います（輪郭はギザギザ）")]
-interp = sb.radio("拡大の仕方（PNG/TIFF）", list(INTERPS), key="interp", horizontal=True,
-                  help="ドットのまま＝最近傍（EDSマップの画素がそのまま見える）。PDF/SVGは常に元画素をそのまま埋め込みます。")
-learn = toggle(sb, "確認した読み取りを記憶する", True,
-               help="書き出し時に、確認済みの元素記号・スケール値と元の文字の形を記憶し、次回の読み取りに使います（このPC内のみ）。")
+rot_fill = ROT_FILLS[sb.radio(ui("斜めに回転したときの四隅"), list(ROT_FILLS), format_func=ui, key="rot_fill", horizontal=True,
+                              help=ui("90°単位以外の回転でできる四隅の空き。切り取る＝空きの無い最大の長方形を使います"))]
+rot_resample = ROT_RESAMPLES[sb.radio(ui("回転の補間（90°単位以外）"), list(ROT_RESAMPLES), format_func=ui, key="rot_resample", horizontal=True,
+                                      help=ui("90°単位の回転と反転は画素を並べ替えるだけで、補間はしません。"
+                                           "それ以外の角度は画素を作り直します。最近傍は元の画素値をそのまま使います（輪郭はギザギザ）"))]
+interp = sb.radio(ui("拡大の仕方（PNG/TIFF）"), list(INTERPS), format_func=ui, key="interp", horizontal=True,
+                  help=ui("ドットのまま＝最近傍（EDSマップの画素がそのまま見える）。PDF/SVGは常に元画素をそのまま埋め込みます。"))
+learn = toggle(sb, ui("確認した読み取りを記憶する"), True,
+               help=ui("書き出し時に、確認済みの元素記号・スケール値と元の文字の形を記憶し、次回の読み取りに使います（このPC内のみ）。"))
 if DESKTOP == "browser":  # the PC app opened in the browser ends from here (in its own window: closing the window)
     sb.divider()
     if st.session_state.get("_quit_ask"):
-        sb.warning("終了しますか？保存していない作業は消えます。")
+        sb.warning(ui("終了しますか？保存していない作業は消えます。"))
         q1, q2 = sb.columns(2)
-        if q1.button("終了する", type="primary"):
-            st.info("終了しました。このタブは閉じてかまいません。")
+        if q1.button(ui("終了する"), type="primary"):
+            st.info(ui("終了しました。このタブは閉じてかまいません。"))
             threading.Timer(0.8, os._exit, args=(0,)).start()  # after this page has been sent
             st.stop()
-        if q2.button("やめる"):
+        if q2.button(ui("やめる")):
             st.session_state["_quit_ask"] = False
             st.rerun()
-    elif sb.button("アプリを終了", help="このアプリを閉じます（ブラウザのタブを閉じても、しばらくすると終わります）"):
+    elif sb.button(ui("アプリを終了"), help=ui("このアプリを閉じます（ブラウザのタブを閉じても、しばらくすると終わります）")):
         st.session_state["_quit_ask"] = True
         st.rerun()
 
@@ -1188,9 +1248,9 @@ SCALES = st.session_state.setdefault("scales_g", {})  # scale values by label in
 if not files:
     st.session_state["_shown"] = None
     st.title(APP_NAME)
-    st.caption(APP_TAGLINE)
+    st.caption(ui(APP_TAGLINE))
     st.markdown(
-        "AZtec の Word 出力（`.docx`）や SEM・TEM 像を左に入れると、画像を並べた論文用の図を作ります。\n\n"
+        ui("AZtec の Word 出力（`.docx`）や SEM・TEM 像を左に入れると、画像を並べた論文用の図を作ります。\n\n"
         "- AZtec：タイトル・スケールバー・余白を外して**画像本体だけ**を切り出し、各マップの左上に**元素記号**を入れます\n"
         "- SEM・TEM像：下の**情報帯（倍率・日付・スケール）を外し**、帯のスケールから画素寸法を求めます。左上に**サンプル名**を入れられます。"
         "文字が画像に直接重ねて書かれた形式（JEOL など）は、文字のある下端の行を切り落とします\n"
@@ -1202,10 +1262,10 @@ if not files:
         "（PNG / TIFF は可逆、PDF / SVG は元画素を埋め込み・文字は編集可）\n"
         "- 画像は縦横同じ倍率でしか拡大縮小しません（**縦横比は元画像のまま**）\n"
         "- 左の「作業の保存」で、読み込んだファイルと設定（並び順・ラベル・調整・配置など）を1つの**作業ファイル（.edsfig）**に"
-        "保存できます。その作業ファイルを入れると、続きから作業できます\n\n"
-        + ("研究室の PC で動いている共有アプリです。入れたファイルはその PC のメモリ上だけで処理され、外部には送られず、"
-           "ほかの人からも見えません。図と作業ファイルは自分の PC にダウンロードされます。" if SERVER else
-           "ネット接続は使いません。データはこのPCの中だけで処理されます。")
+        "保存できます。その作業ファイルを入れると、続きから作業できます\n\n")
+        + (ui("研究室の PC で動いている共有アプリです。入れたファイルはその PC のメモリ上だけで処理され、外部には送られず、"
+           "ほかの人からも見えません。図と作業ファイルは自分の PC にダウンロードされます。") if SERVER else
+           ui("ネット接続は使いません。データはこのPCの中だけで処理されます。"))
     )
     st.stop()
 
@@ -1214,7 +1274,8 @@ docs, imgs, txts, windows = [], [], [], []
 for f in files:
     ext = Path(f.name).suffix.lower().lstrip(".")
     (docs if ext == "docx" else txts if ext == "txt" else windows if id(f) in WINDOWS else imgs).append(f)
-reports = []  # (display name, kind, key, payload)
+reports = []  # (name, kind, key, payload)
+TITLES: dict[str, i18n.Msg] = {}  # names made here (not file names), for showing in the language of the screen
 for f in docs:
     data = f.getvalue()
     reports.append((f.name, "docx", "d" + hashlib.md5(data).hexdigest()[:10], (data, f.name)))
@@ -1227,22 +1288,26 @@ if imgs:
     tx = tuple((Path(f.name).stem, f.getvalue().decode("utf-8", "ignore")) for f in txts)
     h = hashlib.md5(b"".join(hashlib.md5(b).digest() for b in blobs) + "|".join(inames).encode())
     n_dm = sum(1 for f in imgs if Path(f.name).suffix.lower() in (".dm3", ".dm4"))
-    title = f"{'TEM' if n_dm == len(imgs) else 'SEM・TEM' if n_dm else 'SEM'}像 {len(imgs)} 枚"
+    title = i18n.msg("{0}像 {1} 枚", i18n.msg("TEM" if n_dm == len(imgs) else "SEM・TEM" if n_dm else "SEM"), len(imgs))
+    TITLES[str(title)] = title
+    title = str(title)
     reports.append((title, "images", "i" + h.hexdigest()[:10], (blobs, inames, tx, title)))
 if combine_all and len(reports) > 1:  # everything in one figure
     parts = tuple((rk, pl) for _, rk, _, pl in reports)
     hm = hashlib.md5("|".join(k for _, _, k, _ in reports).encode()).hexdigest()[:10]
-    parts_t = ([f"Word {len(docs)} 件"] if docs else []) + ([f"EPMA {len(windows)} 件"] if windows else []) \
-        + ([f"画像 {len(imgs)} 枚"] if imgs else [])
-    mtitle = "まとめた図（" + "・".join(parts_t) + "）"
+    parts_t = ([i18n.msg("Word {0} 件", len(docs))] if docs else []) + ([i18n.msg("EPMA {0} 件", len(windows))] if windows else []) \
+        + ([i18n.msg("画像 {0} 枚", len(imgs))] if imgs else [])
+    mtitle = i18n.msg("まとめた図（{0}）", i18n.join("・", parts_t))
+    TITLES[str(mtitle)] = mtitle
+    mtitle = str(mtitle)
     reports = [(mtitle, "mixed", "m" + hm, (parts, mtitle))]
 if not reports:
     st.session_state["_shown"] = None
-    st.info("画像か Word 出力を入れてください（.txt だけでは図になりません）。")
+    st.info(ui("画像か Word 出力を入れてください（.txt だけでは図になりません）。"))
     st.stop()
 
 
-@st.cache_data(show_spinner="1つの図にまとめています…", max_entries=8, ttl=TTL)
+@st.cache_data(show_spinner=ui("1つの図にまとめています…"), max_entries=8, ttl=TTL)
 def parse_mixed(parts: tuple, title: str) -> aztec.Report:
     return aztec.combine([parse_docx(*pl) if rk == "docx" else parse_sheet(*pl) if rk == "sheet" else parse_images(*pl)
                           for rk, pl in parts], title)
@@ -1264,6 +1329,14 @@ for n, *_ in reports:
     while lab in names:
         lab, k = f"{n} ({k})", k + 1
     names.append(lab)
+    if n in TITLES and lab != n:
+        TITLES[lab] = i18n.msg("{0} ({1})", TITLES[n], k - 1)
+
+
+def shown_name(n: str) -> str:
+    return str(i18n.show(TITLES[n])) if n in TITLES else n
+
+
 want = st.session_state.pop("_restore_fig", None)  # an opened work file: the figure shown when it was saved
 if len(reports) > 1:
     keys_now = [k for _, _, k, _ in reports]
@@ -1279,7 +1352,7 @@ if len(reports) > 1:
             st.session_state["fig"] = names[keys_now.index(target)]
     if st.session_state.get("fig") not in names:
         st.session_state.pop("fig", None)
-    choice = st.selectbox("図", names, key="fig")
+    choice = st.selectbox(ui("図"), names, format_func=shown_name, key="fig")
 else:
     choice = names[0]
 name, rkind, key, payload = reports[names.index(choice)]
@@ -1343,42 +1416,40 @@ def save_panel() -> None:
     loaded = [(f.name, f.getvalue()) for f in files]
     total = sum(len(b) for _, b in loaded)
     when = datetime.now().strftime("%m%d-%H%M")
-    full_name, conf_name = f"{stem}_作業_{when}{P.EXT}", f"{stem}_設定_{when}{P.EXT}"
+    full_name, conf_name = f"{stem}_{ui('作業')}_{when}{P.EXT}", f"{stem}_{ui('設定')}_{when}{P.EXT}"
     mime = "application/octet-stream"  # (a .zip type would make some browsers unpack it)
-    with save_box.expander("作業の保存（続きから再開）"):
-        st.caption("読み込んだファイル（元のまま・無圧縮）と、表の並び順・使う・ラベル、明るさ・回転・トリミング、配置、"
+    with save_box.expander(ui("作業の保存（続きから再開）")):
+        st.caption(ui("読み込んだファイル（元のまま・無圧縮）と、表の並び順・使う・ラベル、明るさ・回転・トリミング、配置、"
                    "スケール、左の設定を、1つの作業ファイル（.edsfig）に保存します。"
-                   "次回は上の欄にその作業ファイルを入れるだけで、続きから作業できます。")
+                   "次回は上の欄にその作業ファイルを入れるだけで、続きから作業できます。"))
         if DEFERRED_DOWNLOAD:
             sums = None
-            st.download_button(f"作業を保存（{size_text(total)}）", data=partial(P.pack, loaded, state, True, APP_VERSION),
+            st.download_button(ui("作業を保存（{0}）", size_text(total)), data=partial(P.pack, loaded, state, True, APP_VERSION),
                                file_name=full_name, mime=mime, **opt(st.download_button, type="primary"),
                                **FW_DOWNLOAD)
         else:  # older Streamlit: build the file first, then save it
             sums = [md5_of(f) for f in files]
             sig = hashlib.md5(json.dumps(state, sort_keys=True, ensure_ascii=False, default=str).encode()
                               + "|".join(sums).encode()).hexdigest()
-            if st.button(f"作業ファイルを作る（{size_text(total)}）", **opt(st.button, type="primary"), **FW_BUTTON):
-                with st.spinner("作業ファイルを作っています…"):
+            if st.button(ui("作業ファイルを作る（{0}）", size_text(total)), **opt(st.button, type="primary"), **FW_BUTTON):
+                with st.spinner(ui("作業ファイルを作っています…")):
                     st.session_state["work"] = {"sig": sig, "name": full_name,
                                                 "data": P.pack(loaded, state, True, APP_VERSION, sums)}
             w = st.session_state.get("work")
             if w and w["sig"] == sig:
-                st.download_button(f"保存：{w['name']}", data=w["data"], file_name=w["name"], mime=mime,
+                st.download_button(ui("保存：{0}", w['name']), data=w["data"], file_name=w["name"], mime=mime,
                                    **opt(st.download_button, type="primary"), **FW_DOWNLOAD)
             else:
                 st.session_state.pop("work", None)  # settings changed: the file made before is let go
-                st.caption("「作業ファイルを作る」を押すと保存ボタンが出ます（設定を変えたら作り直してください）。")
-        st.caption(f"大きさは元のファイルの合計とほぼ同じ（{size_text(total)}）です。元のファイルを手元に残しておくなら、"
-                   "設定だけの小さなファイルでも再開できます（そのときは元のファイルと一緒に入れます）。")
+                st.caption(ui("「作業ファイルを作る」を押すと保存ボタンが出ます（設定を変えたら作り直してください）。"))
+        st.caption(ui("大きさは元のファイルの合計とほぼ同じ（{0}）です。元のファイルを手元に残しておくなら、設定だけの小さなファイルでも再開できます（そのときは元のファイルと一緒に入れます）。", size_text(total)))
         try:
             limit_mb = int(st.get_option("server.maxUploadSize"))
         except Exception:  # (an option missing in some version)
             limit_mb = 0
         if limit_mb and total > limit_mb * 1024 * 1024:
-            st.warning(f"作業ファイルが {size_text(total)} になり、読み込める上限（{limit_mb} MB）を超えます。"
-                       "「設定だけ保存」を使うか、アプリのフォルダの .streamlit/config.toml の maxUploadSize を大きくしてください。")
-        st.download_button("設定だけ保存", file_name=conf_name, mime=mime, **FW_DOWNLOAD,
+            st.warning(ui("作業ファイルが {0} になり、読み込める上限（{1} MB）を超えます。「設定だけ保存」を使うか、アプリのフォルダの .streamlit/config.toml の maxUploadSize を大きくしてください。", size_text(total), limit_mb))
+        st.download_button(ui("設定だけ保存"), file_name=conf_name, mime=mime, **FW_DOWNLOAD,
                            data=partial(P.pack, loaded, state, False, APP_VERSION) if DEFERRED_DOWNLOAD
                            else P.pack(loaded, state, False, APP_VERSION, sums))
 
@@ -1389,64 +1460,91 @@ def halt() -> None:
     st.stop()
 
 
-st.header(name)
+st.header(shown_name(choice))
 if not rep.panels:
     st.session_state["_shown"] = None
-    st.error("画像が見つかりませんでした。")
+    st.error(ui("画像が見つかりませんでした。"))
     st.stop()
 
 # ---- 1. panels -------------------------------------------------------------
-st.subheader("1. 画像とラベルの確認")
+st.subheader(ui("1. 画像とラベルの確認"))
 if any("/tile" in p.src.uid for p in rep.panels):
-    st.caption("JEOL EPMA のマップ画面：タイルごとにマップを切り出し（画素はそのまま）、下の白い枠の名前（元素記号・SED・BED-C など）と"
+    st.caption(ui("JEOL EPMA のマップ画面：タイルごとにマップを切り出し（画素はそのまま）、下の白い枠の名前（元素記号・SED・BED-C など）と"
                "スケールバー（「20 µm」など）を読んでいます。SED・BED などは電子像になります。"
-               "右側の色スケール・測定条件は使いません。")
+               "右側の色スケール・測定条件は使いません。"))
 if rep.kind == "mixed":
-    st.caption("Word出力（EDS）の画像とSEM・TEM像を1つの図にまとめています。マップのラベルには元素記号、"
-               "SEM・TEM像の「ラベル」にはサンプル名などを入れます。Word出力ごとの画像は同じ視野として視野幅を照合します。")
+    st.caption(ui("Word出力（EDS）の画像とSEM・TEM像を1つの図にまとめています。マップのラベルには元素記号、"
+               "SEM・TEM像の「ラベル」にはサンプル名などを入れます。Word出力ごとの画像は同じ視野として視野幅を照合します。"))
 if rep.kind in ("images", "mixed"):
-    st.caption("「ラベル」にサンプル名を入れると、画像の左上（サイドバーで位置を変更可）に入ります。"
+    st.caption(ui("「ラベル」にサンプル名を入れると、画像の左上（サイドバーで位置を変更可）に入ります。"
                "「帯 (px)」は取り除いた情報帯の高さです。文字が画像に重ねて書かれた形式では、文字のある下端の行数です"
-               "（0にすると切らずにそのまま使います）。")
+               "（0にすると切らずにそのまま使います）。"))
 else:
-    st.caption("「元の表示」を見て、ラベル（左上に入る文字）が正しいか確認してください。電子像の行にサンプル名を入れることもできます。"
-               "使わない画像はチェックを外します。スペクトルなど図に使わない画像は、最初からチェックを外してあります。")
+    st.caption(ui("「元の表示」を見て、ラベル（左上に入る文字）が正しいか確認してください。電子像の行にサンプル名を入れることもできます。"
+               "使わない画像はチェックを外します。スペクトルなど図に使わない画像は、最初からチェックを外してあります。"))
 if free:
-    st.caption("自由配置：図の並びは「4. プレビュー」の上の配置の欄で、この「順」の番号を使って書きます。"
+    st.caption(ui("自由配置：図の並びは「4. プレビュー」の上の配置の欄で、この「順」の番号を使って書きます。"
                "「順」の番号を入れ替えると、配置の欄のその番号の場所に入る画像が入れ替わります。"
-               "「使う」を外した画像は一番下に移り、配置の欄の番号もそれに合わせて書き換わります。")
+               "「使う」を外した画像は一番下に移り、配置の欄の番号もそれに合わせて書き換わります。"))
 else:
-    st.caption("並び順：図は「順」の番号の順に、左上から右へ、次の行へと並びます。「順」に番号を入れるとその位置へ移動し、"
+    st.caption(ui("並び順：図は「順」の番号の順に、左上から右へ、次の行へと並びます。「順」に番号を入れるとその位置へ移動し、"
                "ほかの画像は1つずつずれます（例：3番目の画像に 1 と入れると先頭へ）。下の「2.」のカードの「◀ 前へ」「後へ ▶」でも動かせます。"
-               "「使う」を外した画像は一番下に移り、もう一度チェックすると使う画像の最後に入ります。")
+               "「使う」を外した画像は一番下に移り、もう一度チェックすると使う画像の最後に入ります。"))
 PK = picture_keys(rep)  # each picture's key: its settings follow it when files are added or removed
 if st.session_state.get("_shown") != key or key not in BASES:  # (re)appearing on screen
     BASES[key] = TABLES[key] = table_for(key, rep, PK, adopt=True)
 st.session_state["_shown"] = key
 column_config = {
-    "use": st.column_config.CheckboxColumn("使う", width="small"),
-    "order": st.column_config.NumberColumn("順", min_value=1, max_value=99, step=1, width="small"),
-    "thumb": st.column_config.ImageColumn("画像", width="small"),
-    "title": st.column_config.ImageColumn("元の表示", width="medium"),
-    "label": st.column_config.TextColumn("ラベル（サンプル名など）" if rep.kind != "aztec" else "ラベル（左上）",
+    "use": st.column_config.CheckboxColumn(ui("使う"), width="small"),
+    "order": st.column_config.NumberColumn(ui("順"), min_value=1, max_value=99, step=1, width="small"),
+    "thumb": st.column_config.ImageColumn(ui("画像"), width="small"),
+    "title": st.column_config.ImageColumn(ui("元の表示"), width="medium"),
+    "label": st.column_config.TextColumn(ui("ラベル（サンプル名など）") if rep.kind != "aztec" else ui("ラベル（左上）"),
                                          width="medium" if rep.kind != "aztec" else "small"),
-    "status": st.column_config.TextColumn("読み取り", width="small",
-                                          help="✓ = 確実、要確認 = 候補が拮抗、要入力 = 読めなかった"),
-    "kind": st.column_config.SelectboxColumn("種類", options=list(KIND_JA.values()), width="small"),
+    "status": st.column_config.TextColumn(ui("読み取り"), width="small",
+                                          help=ui("✓ = 確実、要確認 = 候補が拮抗、要入力 = 読めなかった")),
+    "kind": st.column_config.SelectboxColumn(ui("種類"), options=[ui(v) for v in KIND_JA.values()], width="small"),
 }
 if "band" in BASES[key].columns:  # loose pictures, or a layered image with its colour key
-    column_config["band"] = st.column_config.NumberColumn("帯 (px)", min_value=0, max_value=5000, step=1, width="small",
-                                                          help="取り除く情報帯（または文字・色見本が重なった下端）の高さ（画素）。0 = 切らない")
+    column_config["band"] = st.column_config.NumberColumn(ui("帯 (px)"), min_value=0, max_value=5000, step=1, width="small",
+                                                          help=ui("取り除く情報帯（または文字・色見本が重なった下端）の高さ（画素）。0 = 切らない"))
 EDVER = st.session_state.setdefault("edver", {})
+if st.session_state.get("_table_lang", LANG) != LANG:  # another language: a new table widget, from the table as edited
+    BASES[key] = TABLES.get(key, BASES[key])
+st.session_state["_table_lang"] = LANG
+
+
+def table_shown(t: pd.DataFrame) -> pd.DataFrame:
+    """The table as put on screen: 種類 and 読み取り in the language of the screen (stored in Japanese)."""
+    if LANG == "ja":
+        return t
+    out = t.copy()
+    out["kind"] = [ui(cell_text(v)) for v in t["kind"]]
+    out["status"] = [ui(cell_text(v)) for v in t["status"]]
+    return out
+
+
+def table_stored(t: pd.DataFrame, base: pd.DataFrame) -> pd.DataFrame:
+    """The edited table back in its stored form."""
+    if LANG == "ja":
+        return t
+    back = {ui(v): v for v in KIND_JA.values()}
+    out = t.copy()
+    out["kind"] = [back.get(cell_text(v), cell_text(v)) for v in t["kind"]]
+    out["status"] = [base.at[i, "status"] if i in base.index else "" for i in t.index]
+    return out
+
+
 table = st.data_editor(
-    BASES[key],
-    key=f"ed_{key}_{EDVER.get(key, 0)}",  # a new widget whenever the order is renumbered
+    table_shown(BASES[key]),
+    key=f"ed_{key}_{EDVER.get(key, 0)}" + ("" if LANG == "ja" else f"_{LANG}"),  # a new widget whenever the order is renumbered
     hide_index=True,
     column_config=column_config,
     disabled=["thumb", "title", "status"],
     **opt(st.data_editor, row_height=64),
     **FW_EDITOR,
 )
+table = table_stored(table, BASES[key])
 ro = renumbered(table, BASES[key])
 if ro is not None:  # a number typed in "順": move the picture there and number all 1..n again
     ro = used_first(ro)
@@ -1466,11 +1564,11 @@ st.session_state.setdefault("tpks", {})[key] = {i: PK[i] for i in table.index}
 apply_bands(rep, table)  # the band settings of the table apply to everything below
 
 # ---- 2. brightness / contrast (and trimming) --------------------------------
-st.subheader("2. 画像ごとの調整")
-st.caption("明るさ・コントラスト・スケールバーの色・回転・トリミングを画像ごとに調整できます。"
+st.subheader(ui("2. 画像ごとの調整"))
+st.caption(ui("明るさ・コントラスト・スケールバーの色・回転・トリミングを画像ごとに調整できます。"
            "明るさ等の調整は画像全体に一様にかかり、設定は書き出す較正情報（calibration.json）に記録されます。"
            "自動＝レベル補正（白黒の像は上下0.5%を切り詰めて全階調に、カラーのマップは黒を保ったまま明るい0.5%を最大に）。"
-           "コントラストは画像の平均の明るさを中心に変わります（+100%で2倍）。カラーのマップは色相を変えずに明るさだけが変わります。")
+           "コントラストは画像の平均の明るさを中心に変わります（+100%で2倍）。カラーのマップは色相を変えずに明るさだけが変わります。"))
 # per-picture settings are kept by picture key: they follow the picture into any figure
 ADJ = st.session_state.setdefault("adj_pk", {})  # brightness / contrast
 BARCOL = st.session_state.setdefault("barcol_pk", {})  # scale bar colour
@@ -1495,12 +1593,12 @@ if align == "crop":
     akey = f"ca_{key}"
     if st.session_state.get(akey) not in opts:  # set once; the widget then keeps the choice
         st.session_state[akey] = CROPSET["aspect"] if CROPSET["aspect"] in opts else opts[0]
-    choice = st.selectbox("トリミング後の縦横比（全画像で共通）", opts, key=akey,
-                          help="自動＝全画像の切り取りが最も少なくなる形（どれか1枚は切り取られません）。"
-                               "「○○と同じ形」を選ぶと、その画像はそのままで、ほかの画像をその形に切り取ります。")
+    choice = st.selectbox(ui("トリミング後の縦横比（全画像で共通）"), opts, format_func=aspect_text, key=akey,
+                          help=ui("自動＝全画像の切り取りが最も少なくなる形（どれか1枚は切り取られません）。"
+                               "「○○と同じ形」を選ぶと、その画像はそのままで、ほかの画像をその形に切り取ります。"))
     CROP_ASPECT[key] = CROPSET["aspect"] = choice
-    st.caption("黄色の枠の中が図に使う部分です。「拡大」で範囲を狭め、「横位置」「縦位置」で切り取る場所を動かせます。"
-               "切り取りは元の画素をそのまま使い、拡大縮小や変形はしません。スケールバーは切り取った後の視野に合わせて付きます。")
+    st.caption(ui("黄色の枠の中が図に使う部分です。「拡大」で範囲を狭め、「横位置」「縦位置」で切り取る場所を動かせます。"
+               "切り取りは元の画素をそのまま使い、拡大縮小や変形はしません。スケールバーは切り取った後の視野に合わせて付きます。"))
     for i in shown:
         for n, d in CROP_DEFAULT.items():  # set once; the sliders then keep what the user chooses
             if crop_key(n, PK[i]) not in st.session_state:
@@ -1517,8 +1615,8 @@ if align != "crop":  # each picture trimmed on its own (the card's "トリミン
     boxes = trim_boxes(rep, shown, by_index(TRIMS, PK))
     trim_note = st.empty()  # always there: the cards below keep their place (an open expander stays open)
     if boxes:
-        trim_note.caption("黄色の枠の中が図に使う部分です（各カードの「トリミング」）。切り取りは元の画素をそのまま使い、"
-                          "拡大縮小や変形はしません。スケールバーは切り取った後の視野に合わせて付きます。")
+        trim_note.caption(ui("黄色の枠の中が図に使う部分です（各カードの「トリミング」）。切り取りは元の画素をそのまま使い、"
+                          "拡大縮小や変形はしません。スケールバーは切り取った後の視野に合わせて付きます。"))
 PER_ROW = 4
 for start in range(0, len(shown), PER_ROW):
     cols = st.columns(PER_ROW)
@@ -1537,107 +1635,107 @@ for start in range(0, len(shown), PER_ROW):
         pos = shown.index(i) + 1
         name_i = f"{cell_int(table.at[i, 'order']) or pos}. " + (cell_text(table.at[i, "label"]) or picture_name(rep, p))
         if p.turned:
-            name_i += f"（{transform.describe(p.rotation, p.flip_h, p.flip_v)}）"
+            name_i += ui("（{0}）", transform.describe(p.rotation, p.flip_h, p.flip_v))
         if i in boxes:
             bx = boxes[i]
-            name_i += f"（{bx[2] - bx[0]}×{bx[3] - bx[1]} px を使用）"
+            name_i += ui("（{0}×{1} px を使用）", bx[2] - bx[0], bx[3] - bx[1])
         c.image(thumb, caption=name_i, **FW_IMAGE)
         m1, m2 = c.columns(2)
-        m1.button("◀ 前へ", key=f"ml_{key}_{i}", on_click=move_picture, args=(key, i, -1), disabled=pos == 1, **FW_BUTTON)
-        m2.button("後へ ▶", key=f"mr_{key}_{i}", on_click=move_picture, args=(key, i, 1), disabled=pos == len(shown),
+        m1.button(ui("◀ 前へ"), key=f"ml_{key}_{i}", on_click=move_picture, args=(key, i, -1), disabled=pos == 1, **FW_BUTTON)
+        m2.button(ui("後へ ▶"), key=f"mr_{key}_{i}", on_click=move_picture, args=(key, i, 1), disabled=pos == len(shown),
                   **FW_BUTTON)
-        toggle(c, "自動（レベル補正）", key=adj_key("auto", pk))
-        c.slider("明るさ (%)", -100, 100, step=1, key=adj_key("brightness", pk))
-        c.slider("コントラスト (%)", -100, 200, step=5, key=adj_key("contrast", pk))
-        c.slider("γ（中間調）", 0.3, 3.0, step=0.05, key=adj_key("gamma", pk))
+        toggle(c, ui("自動（レベル補正）"), key=adj_key("auto", pk))
+        c.slider(ui("明るさ (%)"), -100, 100, step=1, key=adj_key("brightness", pk))
+        c.slider(ui("コントラスト (%)"), -100, 200, step=5, key=adj_key("contrast", pk))
+        c.slider(ui("γ（中間調）"), 0.3, 3.0, step=0.05, key=adj_key("gamma", pk))
         b1, b2 = c.columns(2)
-        b1.button("元に戻す", key=f"rs_{key}_{i}", on_click=reset_adjust, args=(pk,))
+        b1.button(ui("元に戻す"), key=f"rs_{key}_{i}", on_click=reset_adjust, args=(pk,))
         same = [PK[j] for j in shown if grey_of[j] == grey_of[i] and j != i]
-        b2.button("同じ種類に適用", key=f"cp_{key}_{i}", on_click=copy_adjust, args=(pk, same),
-                  disabled=not same, help="この設定を、白黒の像どうし（またはカラーのマップどうし）すべてに写します")
+        b2.button(ui("同じ種類に適用"), key=f"cp_{key}_{i}", on_click=copy_adjust, args=(pk, same),
+                  disabled=not same, help=ui("この設定を、白黒の像どうし（またはカラーのマップどうし）すべてに写します"))
         ADJ[pk] = {n: st.session_state[adj_key(n, pk)] for n in ADJ_DEFAULT}
         bkey = f"bc_{pk}"
         if bkey not in st.session_state:  # set once; the widget then keeps the choice
             st.session_state[bkey] = BARCOL.get(pk, "共通")
         no_bar = style.scalebar_on == "none" or (style.scalebar_on == "electron" and p.kind != "electron")
-        c.radio("スケールバー・数値の色", list(BAR_CHOICES), key=bkey, horizontal=True, disabled=no_bar,
-                help="共通 = サイドバー「スケールバー」の色。"
-                     + ("この画像にはスケールバーを付けない設定です（サイドバー「付ける画像」）" if no_bar else ""))
+        c.radio(ui("スケールバー・数値の色"), list(BAR_CHOICES), format_func=ui, key=bkey, horizontal=True, disabled=no_bar,
+                help=ui("共通 = サイドバー「スケールバー」の色。")
+                     + (ui("この画像にはスケールバーを付けない設定です（サイドバー「付ける画像」）") if no_bar else ""))
         BARCOL[pk] = st.session_state[bkey]
-        with c.expander("回転・反転"):
-            st.number_input("回転（時計回り・度）", -360.0, 360.0, step=0.5, format="%.1f", key=rot_key("angle", pk),
-                            help="90・180・270° の回転と反転は、画素を並べ替えるだけです（劣化なし）。"
+        with c.expander(ui("回転・反転")):
+            st.number_input(ui("回転（時計回り・度）"), -360.0, 360.0, step=0.5, format="%.1f", key=rot_key("angle", pk),
+                            help=ui("90・180・270° の回転と反転は、画素を並べ替えるだけです（劣化なし）。"
                                  "それ以外の角度は補間で画素を作り直します（方法は左の「画素」で選択）。"
-                                 "スケールは回転前の画像から読み取った値をそのまま使います（回転しても1画素の長さは同じ）")
-            toggle(st, "左右反転", key=rot_key("fh", pk))
-            toggle(st, "上下反転", key=rot_key("fv", pk))
-            st.button("全画像に同じ回転・反転", key=f"rc_{key}_{i}", on_click=copy_rotation,
+                                 "スケールは回転前の画像から読み取った値をそのまま使います（回転しても1画素の長さは同じ）"))
+            toggle(st, ui("左右反転"), key=rot_key("fh", pk))
+            toggle(st, ui("上下反転"), key=rot_key("fv", pk))
+            st.button(ui("全画像に同じ回転・反転"), key=f"rc_{key}_{i}", on_click=copy_rotation,
                       args=(pk, [PK[j] for j in shown if j != i]), disabled=len(shown) < 2)
         if align != "crop":
-            with c.expander("トリミング"):
-                shape = TRIM_SHAPES[st.selectbox("切り取る形", list(TRIM_SHAPES), key=trim_key("shape", pk),
-                                                 help="形を選んで「拡大」「横位置」「縦位置」で範囲を決めるか、"
-                                                      "「範囲を指定」で上下左右の端を直接決めます")]
+            with c.expander(ui("トリミング")):
+                shape = TRIM_SHAPES[st.selectbox(ui("切り取る形"), list(TRIM_SHAPES), format_func=ui, key=trim_key("shape", pk),
+                                                 help=ui("形を選んで「拡大」「横位置」「縦位置」で範囲を決めるか、"
+                                                      "「範囲を指定」で上下左右の端を直接決めます"))]
                 if shape == "free":
-                    st.slider("横の範囲 (%)", 0.0, 100.0, step=0.5, key=trim_key("xr", pk),
-                              help="使う部分の左端と右端（0 = 画像の左端、100 = 右端）")
-                    st.slider("縦の範囲 (%)", 0.0, 100.0, step=0.5, key=trim_key("yr", pk),
-                              help="使う部分の上端と下端（0 = 画像の上端、100 = 下端）")
+                    st.slider(ui("横の範囲 (%)"), 0.0, 100.0, step=0.5, key=trim_key("xr", pk),
+                              help=ui("使う部分の左端と右端（0 = 画像の左端、100 = 右端）"))
+                    st.slider(ui("縦の範囲 (%)"), 0.0, 100.0, step=0.5, key=trim_key("yr", pk),
+                              help=ui("使う部分の上端と下端（0 = 画像の上端、100 = 下端）"))
                 elif shape != "none":
                     bx = boxes.get(i, (0, 0, *p.size))
-                    st.slider("拡大（範囲を狭める）", 1.0, 5.0, step=0.1, key=trim_key("zoom", pk),
-                              help="1.0 = その形で切り取れる最大の範囲。2.0 で幅・高さとも半分の範囲になります")
-                    st.slider("横位置 (%)", 0, 100, step=1, key=trim_key("fx", pk), disabled=bx[2] - bx[0] >= p.size[0],
-                              help="0 = 左端、50 = 中央、100 = 右端")
-                    st.slider("縦位置 (%)", 0, 100, step=1, key=trim_key("fy", pk), disabled=bx[3] - bx[1] >= p.size[1],
-                              help="0 = 上端、50 = 中央、100 = 下端")
+                    st.slider(ui("拡大（範囲を狭める）"), 1.0, 5.0, step=0.1, key=trim_key("zoom", pk),
+                              help=ui("1.0 = その形で切り取れる最大の範囲。2.0 で幅・高さとも半分の範囲になります"))
+                    st.slider(ui("横位置 (%)"), 0, 100, step=1, key=trim_key("fx", pk), disabled=bx[2] - bx[0] >= p.size[0],
+                              help=ui("0 = 左端、50 = 中央、100 = 右端"))
+                    st.slider(ui("縦位置 (%)"), 0, 100, step=1, key=trim_key("fy", pk), disabled=bx[3] - bx[1] >= p.size[1],
+                              help=ui("0 = 上端、50 = 中央、100 = 下端"))
                 t1, t2 = st.columns(2)
-                t1.button("切り取りを戻す", key=f"tr_{key}_{i}", on_click=reset_trim, args=(pk,))
+                t1.button(ui("切り取りを戻す"), key=f"tr_{key}_{i}", on_click=reset_trim, args=(pk,))
                 views = [PK[j] for j in same_view(rep, i, shown)]
-                t2.button("同じ視野の画像に適用", key=f"tc_{key}_{i}", on_click=copy_trim, args=(pk, views),
+                t2.button(ui("同じ視野の画像に適用"), key=f"tc_{key}_{i}", on_click=copy_trim, args=(pk, views),
                           disabled=not views,
-                          help="同じWord出力の電子像とマップ、または同じ画素数の画像すべてに、同じ切り取りを写します"
-                               "（位置と範囲は画像に対する割合なので、画素数の違うマップでも同じ場所になります）")
+                          help=ui("同じWord出力の電子像とマップ、または同じ画素数の画像すべてに、同じ切り取りを写します"
+                               "（位置と範囲は画像に対する割合なので、画素数の違うマップでも同じ場所になります）"))
         if align == "crop":
             if i in boxes:
                 x0, y0, x1, y1 = boxes[i]
                 W_i, H_i = p.size
-                c.slider("拡大（範囲を狭める）", 1.0, 5.0, step=0.1, key=crop_key("zoom", pk),
-                         help="1.0 = その形で切り取れる最大の範囲。2.0 で幅・高さとも半分の範囲になります")
-                c.slider("横位置 (%)", 0, 100, step=1, key=crop_key("fx", pk), disabled=x1 - x0 >= W_i,
-                         help="0 = 左端、50 = 中央、100 = 右端")
-                c.slider("縦位置 (%)", 0, 100, step=1, key=crop_key("fy", pk), disabled=y1 - y0 >= H_i,
-                         help="0 = 上端、50 = 中央、100 = 下端")
-                c.button("トリミングを戻す", key=f"cr_{key}_{i}", on_click=reset_crop, args=(pk,))
+                c.slider(ui("拡大（範囲を狭める）"), 1.0, 5.0, step=0.1, key=crop_key("zoom", pk),
+                         help=ui("1.0 = その形で切り取れる最大の範囲。2.0 で幅・高さとも半分の範囲になります"))
+                c.slider(ui("横位置 (%)"), 0, 100, step=1, key=crop_key("fx", pk), disabled=x1 - x0 >= W_i,
+                         help=ui("0 = 左端、50 = 中央、100 = 右端"))
+                c.slider(ui("縦位置 (%)"), 0, 100, step=1, key=crop_key("fy", pk), disabled=y1 - y0 >= H_i,
+                         help=ui("0 = 上端、50 = 中央、100 = 下端"))
+                c.button(ui("トリミングを戻す"), key=f"cr_{key}_{i}", on_click=reset_crop, args=(pk,))
             else:
-                c.caption("この画像は切り取りません（スペクトルなど）")
+                c.caption(ui("この画像は切り取りません（スペクトルなど）"))
 
 # ---- 3. scale ---------------------------------------------------------------
-st.subheader("3. スケールの確認")
+st.subheader(ui("3. スケールの確認"))
 groups = scale_groups(rep)
 scale_text: dict[str, str] = {}
 fields: dict[int, str] = {}
 if not groups and not needs_field(rep) and not any(p.src.meta_um_per_px for p in rep.panels):
-    st.info("スケールの情報が見つかりませんでした。")
+    st.info(ui("スケールの情報が見つかりませんでした。"))
 for gk, idx in groups.items():
     p0 = rep.panels[idx[0]]
     sb0 = p0.scalebar
     c1, c2, c3 = st.columns([1.6, 1.2, 3])
     if p0.band_preview is not None:
-        c1.image(p0.band_preview, caption=f"元の表示（{p0.src.name}）", **FW_IMAGE)  # fits the column
+        c1.image(p0.band_preview, caption=ui("元の表示（{0}）", p0.src.name), **FW_IMAGE)  # fits the column
     elif p0.scale_label_preview() is not None:
-        c1.image(p0.scale_label_preview(), caption="元の表示", width=140)
+        c1.image(p0.scale_label_preview(), caption=ui("元の表示"), width=140)
     ok = confident(sb0.score, sb0.margin) if sb0.text else False
     wkey = f"sc_{gk}"  # the same label ink: the same value in every figure
     if wkey not in st.session_state:  # set once; the widget then keeps what the user types
         st.session_state[wkey] = SCALES.get(gk, pretty_len(sb0.text))
-    state = "✓" if ok else ("要確認" if sb0.text else "読めませんでした。数値を入力")
-    val = c2.text_input(f"スケール値（{state}）", key=wkey, help="例: 5 µm / 250 nm / 1 mm（um でも可）")
+    state = "✓" if ok else (ui("要確認") if sb0.text else ui("読めませんでした。数値を入力"))
+    val = c2.text_input(ui("スケール値（{0}）", state), key=wkey, help=ui("例: 5 µm / 250 nm / 1 mm（um でも可）"))
     scale_text[gk] = val
     SCALES[gk] = val
     v, u = textread.parse_length(val)
     if v is None:
-        c3.error("数値と単位を読み取れません（例: 5 µm）")
+        c3.error(ui("数値と単位を読み取れません（例: 5 µm）"))
     else:
         per = {}  # bar length -> pictures (AZtec: one line for the whole set; SEM: one line per picture)
         for i in idx:
@@ -1648,51 +1746,46 @@ for gk, idx in groups.items():
         lines = []
         for L, whos in per.values():
             tile = any("/tile" in rep.panels[i].src.uid for i in idx)  # EPMA bars are short and whole pixels
-            acc = f"（±{100 / L:.1f}%）" if (rep.kind != "aztec" or tile) and L < 100 else ""
-            lines.append(f"{'、'.join(whos)} ／ バー {L:.1f} px{acc} → 1画素 = {v * textread.UNIT_TO_UM[u] / L * 1000:.2f} nm")
+            acc = ui("（±{0:.1f}%）", 100 / L) if (rep.kind != "aztec" or tile) and L < 100 else ""
+            lines.append(ui("{0} ／ バー {1:.1f} px{2} → 1画素 = {3:.2f} nm", ui("、").join(whos), L, acc, v * textread.UNIT_TO_UM[u] / L * 1000))
         c3.caption("  \n".join(lines))
 for i, p in enumerate(rep.panels):
     if p.src.meta_um_per_px and p.kind not in ("other", "spectrum"):
-        st.caption(f"{p.src.name}：機器の記録から 1画素 = {p.src.meta_um_per_px * 1000:.3f} nm（スケールバーより優先）")
+        st.caption(ui("{0}：機器の記録から 1画素 = {1:.3f} nm（スケールバーより優先）", p.src.name, p.src.meta_um_per_px * 1000))
     if p.src.note:
-        st.caption(f"{p.src.name}：{p.src.note}")
+        st.caption(ui("{0}：{1}", p.src.name, p.src.note))
     if p.band is not None and getattr(p.band, "legend", False) and p.band_px:
-        st.caption(f"{picture_name(rep, p)}（{p.src.name}）：重ね合わせ図の色見本（凡例）が画像に描き込まれているため、"
-                   f"{'下端' if p.band.side == 'bottom' else '上端'} {p.band_px} px を切り落とし、"
-                   f"元素記号を色見本の色で左上に入れます（{'・'.join(t for t, _ in p.layers) or '読めませんでした'}）。"
-                   "表の「帯 (px)」を 0 にすると切らずに使います。")
+        st.caption(ui("{0}（{1}）：重ね合わせ図の色見本（凡例）が画像に描き込まれているため、{2} {3} px を切り落とし、元素記号を色見本の色で左上に入れます（{4}）。表の「帯 (px)」を 0 にすると切らずに使います。", picture_name(rep, p), p.src.name, ui('下端') if p.band.side == 'bottom' else ui('上端'), p.band_px, ui("・").join(t for t, _ in p.layers) or ui('読めませんでした')))
     elif p.band is not None and getattr(p.band, "overlay", False) and p.band_px:
-        st.caption(f"{p.src.name}：文字とスケールバーが画像に重ねて書かれているため、"
-                   f"{'下端' if p.band.side == 'bottom' else '上端'} {p.band_px} px（文字のある行）を切り落としています。"
-                   "表の「帯 (px)」を 0 にすると切らずに使います。")
+        st.caption(ui("{0}：文字とスケールバーが画像に重ねて書かれているため、{1} {2} px（文字のある行）を切り落としています。表の「帯 (px)」を 0 にすると切らずに使います。", p.src.name, ui('下端') if p.band.side == 'bottom' else ui('上端'), p.band_px))
 for i in needs_field(rep):
     p = rep.panels[i]
     fkey = f"fw_{PK[i]}"
     if fkey not in st.session_state:
         st.session_state[fkey] = SCALES.get(f"fw|{PK[i]}", "")
     c1, c2 = st.columns([2, 3])
-    val = c1.text_input(f"{p.src.name} の視野幅（横）", key=fkey, help="スケールバーが見つからない画像です。例: 120 µm")
+    val = c1.text_input(ui("{0} の視野幅（横）", p.src.name), key=fkey, help=ui("スケールバーが見つからない画像です。例: 120 µm"))
     SCALES[f"fw|{PK[i]}"] = val
     if val.strip():
         fields[i] = val
-    c2.caption(f"{p.body_size[0]} × {p.body_size[1]} px（回転前の横幅を入力）。空欄のままだと、この画像にはスケールバーを付けません。")
+    c2.caption(ui("{0} × {1} px（回転前の横幅を入力）。空欄のままだと、この画像にはスケールバーを付けません。", p.body_size[0], p.body_size[1]))
 
 items = build_items(rep, table, scale_text, fields, by_index(ADJ, PK), CROPSET if align == "crop" else None,
                     by_index(BARCOL, PK), ROTSET, by_index(TRIMS, PK) if align != "crop" else None)
 for w in rep.warnings:
     if w.startswith("[scale]"):
-        st.warning(w.replace("[scale] ", ""))
+        st.warning(str(i18n.show(w)).replace("[scale] ", ""))
 if rep.kind == "aztec":
     fw = [it.panel.body_size[0] * it.panel.um_per_px for it in items
           if it.panel.um_per_px and it.panel.kind in F.REGULAR]  # as in the files (before turning)
     if fw:
-        st.caption(f"視野幅（横）: {min(fw):.4g}〜{max(fw):.4g} µm（画像間の差 {(max(fw) / min(fw) - 1) * 100:.1f}%）")
+        st.caption(ui("視野幅（横）: {0:.4g}〜{1:.4g} µm（画像間の差 {2:.1f}%）", min(fw), max(fw), (max(fw) / min(fw) - 1) * 100))
 if not items:
-    st.info("「使う」にチェックした画像がありません。")
+    st.info(ui("「使う」にチェックした画像がありません。"))
     halt()
 
 # ---- 4. preview -------------------------------------------------------------
-st.subheader("4. プレビュー")
+st.subheader(ui("4. プレビュー"))
 SPECS = st.session_state.setdefault("specs", {})  # free arrangement as typed, per figure
 SPEC_OK = st.session_state.setdefault("spec_ok", {})  # the last one that could be read, per figure
 
@@ -1707,15 +1800,15 @@ if free:
     if skey not in st.session_state:  # set once; the widget then keeps what the user types
         st.session_state[skey] = SPECS.get(key) or grid_text
     c1, c2 = st.columns([3, 2])
-    c1.text_area("配置（番号で指定）", key=skey, height=130,
-                 help="番号は表の「順」（プレビューの丸の中の番号）。入力したら、枠の外をクリックするか "
-                      "Ctrl+Enter（Mac は ⌘+Enter）で反映されます。")
-    c2.markdown("**書き方**　スペース＝横に並べる（高さが揃う）、`/`＝縦に積む（幅が揃う）、"
+    c1.text_area(ui("配置（番号で指定）"), key=skey, height=130,
+                 help=ui("番号は表の「順」（プレビューの丸の中の番号）。入力したら、枠の外をクリックするか "
+                      "Ctrl+Enter（Mac は ⌘+Enter）で反映されます。"))
+    c2.markdown(ui("**書き方**　スペース＝横に並べる（高さが揃う）、`/`＝縦に積む（幅が揃う）、"
                 "`( )`＝ひとまとまり、改行＝次の段  \n"
                 "例：`1 2 (3/4/5)` … 1・2 の右に 3〜5 を縦に積む  \n"
-                "`(9 (10 11/12 13)) 19` … 9 と 2×2 のマップ、その右に 19")
-    c2.button("列数の並びから作り直す", on_click=reset_spec, args=(skey, grid_text),
-              help=f"サイドバーの列数（{int(ncols)} 列）で並べた配置を書き込みます")
+                "`(9 (10 11/12 13)) 19` … 9 と 2×2 のマップ、その右に 19"))
+    c2.button(ui("列数の並びから作り直す"), on_click=reset_spec, args=(skey, grid_text),
+              help=ui("サイドバーの列数（{0} 列）で並べた配置を書き込みます", int(ncols)))
     spec = st.session_state[skey]
     SPECS[key] = spec
     try:
@@ -1723,9 +1816,9 @@ if free:
         SPEC_OK[key] = spec
     except T.SpecError as e:
         written = None
-        st.error(f"配置を読めません：{e}")
+        st.error(ui("配置を読めません：{0}", i18n.error_text(e)))
         spec = SPEC_OK.get(key) or grid_text
-        st.caption("プレビューは前回の正しい配置で表示しています。")
+        st.caption(ui("プレビューは前回の正しい配置で表示しています。"))
     if written is not None:
         numbered = {cell_int(v) for v in table["order"]}
         used = F.numbers(items)
@@ -1733,29 +1826,27 @@ if free:
         off = [r for r in written if r in numbered and r not in used]
         missing = [r for r in used if r not in written]
         if unknown:
-            st.caption("⚠ この番号の画像はありません：" + "、".join(map(str, unknown)) + f"（表の「順」は 1〜{len(numbered)}）")
+            st.caption(ui("⚠ この番号の画像はありません：") + ui("、").join(map(str, unknown)) + ui("（表の「順」は 1〜{0}）", len(numbered)))
         if off:
-            st.caption("⚠ 「使う」がオフの画像なので省きました：" + "、".join(map(str, off)))
+            st.caption(ui("⚠ 「使う」がオフの画像なので省きました：") + ui("、").join(map(str, off)))
         if missing:
-            st.caption("⚠ 配置に書かれていない画像（図に入りません）：" + "、".join(map(str, missing)))
+            st.caption(ui("⚠ 配置に書かれていない画像（図に入りません）：") + ui("、").join(map(str, missing)))
     style = replace(style, spec=spec)
-show_num = toggle(st, "プレビューに番号を表示", free, key=f"num_{'free' if free else 'grid'}",
-                  help="画像の番号（表の「順」）をプレビューの中央に表示します。書き出すファイルには入りません")
+show_num = toggle(st, ui("プレビューに番号を表示"), free, key=f"num_{'free' if free else 'grid'}",
+                  help=ui("画像の番号（表の「順」）をプレビューの中央に表示します。書き出すファイルには入りません"))
 try:
     png, g = F.preview_png(items, style, max_px=1600)
 except (ValueError, RuntimeError) as e:
-    st.error(str(e))
+    st.error(i18n.error_text(e))
     halt()
 st.image(number_overlay(png, g) if show_num else png, **FW_IMAGE)
-msg = (f"仕上がり {g.width_mm:.1f} × {g.height_mm:.1f} mm（{g.width} × {g.height} px、{g.dpi:.0f} dpi、"
-       f"{'自由配置' if free else f'{g.ncols} 列'}） ／ 縦横比は元画像のまま")
+msg = (ui("仕上がり {0:.1f} × {1:.1f} mm（{2} × {3} px、{4:.0f} dpi、{5}） ／ 縦横比は元画像のまま", g.width_mm, g.height_mm, g.width, g.height, g.dpi, ui('自由配置') if free else ui("{0} 列", g.ncols)))
 if g.capped:
-    st.warning(msg + f" ― 画素数が大きくなりすぎるため {g.dpi:.0f} dpi に抑えました（一部の画像は元の1画素を "
-               f"{g.shrink:.2f} 画素で出力）。PDF/SVG には元の画素がそのまま入ります。")
+    st.warning(msg + ui(" ― 画素数が大きくなりすぎるため {0:.0f} dpi に抑えました（一部の画像は元の1画素を {1:.2f} 画素で出力）。PDF/SVG には元の画素がそのまま入ります。", g.dpi, g.shrink))
 elif g.shrink < 0.999:
-    st.warning(msg + f" ― 一部の画像が元の {g.shrink * 100:.0f}% に縮小されます。dpi を上げるか「元画素の整数倍」にしてください。")
+    st.warning(msg + ui(" ― 一部の画像が元の {0:.0f}% に縮小されます。dpi を上げるか「元画素の整数倍」にしてください。", g.shrink * 100))
 else:
-    st.caption(msg + f" ／ どの画像も元の1画素を {g.shrink:.2f} 画素以上で出力（縮小なし）")
+    st.caption(msg + ui(" ／ どの画像も元の1画素を {0:.2f} 画素以上で出力（縮小なし）", g.shrink))
 # a scale bar must never go missing unnoticed: say which pictures have none, or a length of their own
 placed_refs = set(g.refs or [])
 no_scale, own_length = [], []
@@ -1768,16 +1859,15 @@ for it in items:
         if plan is None:
             no_scale.append(who)
         elif plan[1]:
-            own_length.append(f"{who}（{F.format_length(plan[0])}）")
+            own_length.append(ui("{0}（{1}）", who, F.format_length(plan[0])))
 if own_length:
-    st.warning(f"長さ {F.format_length(style.scalebar_um)} のスケールバーは視野に入りきらないため、次の画像はその画像に合う長さで"
-               "付けています：" + "、".join(own_length) + "。全部を同じ長さにするときは、左の「長さ (µm)」を短くしてください。")
+    st.warning(ui("長さ {0} のスケールバーは視野に入りきらないため、次の画像はその画像に合う長さで付けています：", F.format_length(style.scalebar_um)) + ui("、").join(own_length) + ui("。全部を同じ長さにするときは、左の「長さ (µm)」を短くしてください。"))
 if no_scale:
-    st.warning("スケールが分からないため、次の画像にはスケールバーを付けていません：" + "、".join(no_scale)
-               + "。「3. スケールの確認」でスケール値（または視野幅）を入れてください。")
+    st.warning(ui("スケールが分からないため、次の画像にはスケールバーを付けていません：") + ui("、").join(no_scale)
+               + ui("。「3. スケールの確認」でスケール値（または視野幅）を入れてください。"))
 
 # ---- 5. export --------------------------------------------------------------
-st.subheader("5. 書き出し")
+st.subheader(ui("5. 書き出し"))
 
 
 def remember_labels() -> None:
@@ -1812,26 +1902,26 @@ def make_file(ext: str) -> bytes:
 if DEFERRED_DOWNLOAD:  # one click: the file is built when the button is pressed
     cols = st.columns(len(FORMATS))
     for c, (lab, ext, mime) in zip(cols, FORMATS):
-        c.download_button(lab, data=partial(make_file, ext), file_name=file_name(ext), mime=mime, on_click=remember_labels,
+        c.download_button(ui(lab), data=partial(make_file, ext), file_name=file_name(ext), mime=mime, on_click=remember_labels,
                           **opt(st.download_button, type="primary" if ext == "pdf" else "secondary", help=FORMAT_HELP.get(ext)),
                           **FW_DOWNLOAD)
 else:  # older Streamlit: build the file first, then save it
     c1, c2 = st.columns([3, 1])
-    fmt_label = c1.radio("形式", [f[0] for f in FORMATS], horizontal=True, key="fmt")
+    fmt_label = c1.radio(ui("形式"), [f[0] for f in FORMATS], format_func=ui, horizontal=True, key="fmt")
     _, ext, mime = next(f for f in FORMATS if f[0] == fmt_label)
     sig = export_signature(items, style, f"{key}|{ext}")
-    if c2.button("ファイルを作る", **opt(st.button, type="primary"), **FW_BUTTON):
-        with st.spinner("書き出しています…"):
+    if c2.button(ui("ファイルを作る"), **opt(st.button, type="primary"), **FW_BUTTON):
+        with st.spinner(ui("書き出しています…")):
             st.session_state["export"] = {"sig": sig, "data": make_file(ext), "name": file_name(ext), "mime": mime}
         remember_labels()
     ex = st.session_state.get("export")
     if ex and ex["sig"] == sig:
-        st.download_button(f"保存：{ex['name']}", data=ex["data"], file_name=ex["name"], mime=ex["mime"],
+        st.download_button(ui("保存：{0}", ex['name']), data=ex["data"], file_name=ex["name"], mime=ex["mime"],
                            **opt(st.download_button, type="primary"), **FW_DOWNLOAD)
     else:
-        st.caption("形式を選んで「ファイルを作る」を押すと、保存ボタンが出ます（設定を変えたら作り直してください）。")
-st.caption("PDF/SVG：画像は元画素のまま埋め込み、ラベルとスケールバーは文字・図形として後から編集できます。"
-           "PNG/TIFF：可逆圧縮。" + ("" if DEFERRED_DOWNLOAD else "画像ごと（ZIP）：" + FORMAT_HELP["zip"]))
+        st.caption(ui("形式を選んで「ファイルを作る」を押すと、保存ボタンが出ます（設定を変えたら作り直してください）。"))
+st.caption(ui("PDF/SVG：画像は元画素のまま埋め込み、ラベルとスケールバーは文字・図形として後から編集できます。"
+           "PNG/TIFF：可逆圧縮。") + ("" if DEFERRED_DOWNLOAD else ui("画像ごと（ZIP）：") + FORMAT_HELP["zip"]))
 
 if len(reports) > 1:
     batch = []
@@ -1858,56 +1948,25 @@ if len(reports) > 1:
                     z.writestr(f"{s}_figure.{e}", F.export(it2, st2, e))
         return buf.getvalue()
 
-    blabel = f"全 {len(batch)} 図を同じ設定で一括（PDF＋PNG, ZIP）"
+    blabel = ui("全 {0} 図を同じ設定で一括（PDF＋PNG, ZIP）", len(batch))
     if DEFERRED_DOWNLOAD:
         st.download_button(blabel, data=batch_zip, file_name="figures.zip", mime="application/zip")
     else:
         bsig = export_signature([it for _, its, _ in batch for it in its], style,
                                 "batch|" + "|".join(s2.spec for _, _, s2 in batch))
-        if st.button(blabel + "を作る"):
-            with st.spinner("書き出しています…"):
+        if st.button(ui("全 {0} 図を同じ設定で一括（PDF＋PNG, ZIP）を作る", len(batch))):
+            with st.spinner(ui("書き出しています…")):
                 st.session_state["batch"] = {"sig": bsig, "data": batch_zip()}
         bx = st.session_state.get("batch")
         if bx and bx["sig"] == bsig:
-            st.download_button("保存：figures.zip", data=bx["data"], file_name="figures.zip", mime="application/zip",
+            st.download_button(ui("保存：figures.zip"), data=bx["data"], file_name="figures.zip", mime="application/zip",
                                **opt(st.download_button, type="primary"))
-    st.caption("まだ開いていない図は、自動読み取りのラベルとスケールで書き出します。")
+    st.caption(ui("まだ開いていない図は、自動読み取りのラベルとスケールで書き出します。"))
 
-with st.expander("仕組みと注意"):
+with st.expander(ui("仕組みと注意")):
     st.markdown(
-        "- 画像は**縦横同じ倍率でしか拡大縮小しません**。出力の幅と高さを両方指定した場合も、画像は変形させず、"
-        "枠に収まる最大の大きさで中央に置きます（余りは背景色）。描画のたびに全画像の縦横比を検算しています。\n"
-        "- 形の違う画像は「幅を揃える」「高さを揃える」「トリミングして揃える」から並べ方を選べます（左の「配置」）。"
-        "「自由配置」では、横並び・縦積み・入れ子の配置を番号で書きます。横並びは高さ、縦積みは幅がぴったり揃うように"
-        "各画像の大きさを計算します。トリミングは元の画素をそのまま切り取るだけで、拡大縮小や変形はしません。\n"
-        "- 元素記号・スケールバーの文字（pt）とバーの太さ（pt）、文字・バーと画像の端の間隔は、図全体で共通です。"
-        "画像を小さく置いても大きく置いても、文字とバーは同じ大きさになります。\n"
-        "- 回転・反転：90°単位と反転は画素を並べ替えるだけです。それ以外の角度は補間で画素を作り直します。"
-        "スケールは回転前の画像から読み取った1画素の長さをそのまま使い、回転後の画像に水平なスケールバーを付けます。\n"
-        "- AZtecのWord出力は、画像ごとに背景が透明なPNGで入っています。不透明な長方形＝画像本体、その上＝タイトル、"
-        "下＝スケールバー、と**形だけで**切り分けます。スケールバーの無い横長の画像（Map Sum Spectrum など）は"
-        "スペクトルと判定し、最初は図から外します。\n"
-        "- SEM・TEM像は、端にある「平坦な地に文字と線だけの帯」（日立は白地、JEOLは黒地、FEI/Thermo は灰色の表など）を"
-        "情報帯として取り除きます。帯の中の一番長い線をスケールバーとし（目盛りがあれば両端の目盛りの中心間）、"
-        "近くの「数値＋単位」の文字を読みます。TEM-EDS のマップは、端の強度カラーバーも外します。\n"
-        "- 文字とスケールバーが画像に直接重ねて書かれた形式（JEOL の FE-SEM など）は、その文字のある下端の行を切り落とします。"
-        "文字の下の画像は元データの時点で上書きされているので、復元はできません。"
-        "画像の中に描き込まれた測長線なども画像の一部なので消せません。\n"
-        "- DigitalMicrograph（.dm3/.dm4）は画素値の 0.1〜99.9% を白黒の 256 階調に割り当てて表示し、記録された画素寸法を使います"
-        "（回折像など単位が 1/nm のものにはスケールバーを付けません）。\n"
-        "- JEOL EPMA のマップ画面は、青緑の地の帯にはさまれた長方形をマップとして元の画素のまま切り出し、下の白い枠の細い線"
-        "（スケールバー）の長さと「20 µm」などの文字から1画素の大きさを求めます。どのマップも同じ測定なので、同じスケールです。\n"
-        "- 文字（元素記号とスケール値）は、候補を元の字形に似たフォントで描いて1文字ずつ照合しています。"
-        "確認した読み取りは記憶され、同じ装置・テンプレートの画像では次回から確実に読めます。\n"
-        "- SEMのスケールバーが短いと（例：36画素）、バーの長さの丸めで±3%程度の誤差が出ます。"
-        "SEMが画像と一緒に保存する .txt（日立の PixelSize、JEOLの $$SM_MICRON_BAR）や、"
-        "FEI/Thermo・ZEISS の TIFF に記録された画素寸法があれば、そちらを優先して使います。\n"
-        "- 作業ファイル（.edsfig）：読み込んだファイルを1バイトも変えずに（圧縮もせずに）入れたZIP形式のファイルに、"
-        "設定（edsfig.json）を添えたものです。設定は画像の中身（MD5）に結び付けてあるので、"
-        "「設定だけ保存」したファイルも、同じ元ファイルと一緒に入れれば（入れる順番やフォルダが違っても）当てはまります。\n"
-        "- 画質の上限は元画像の解像度です。\n"
-        f"- 動作環境：Streamlit {st.__version__}"
-        + ("" if DEFERRED_DOWNLOAD else "（1.52 以降に更新すると、書き出しがボタン1回で済みます）")
+        ui("- 画像は**縦横同じ倍率でしか拡大縮小しません**。出力の幅と高さを両方指定した場合も、画像は変形させず、枠に収まる最大の大きさで中央に置きます（余りは背景色）。描画のたびに全画像の縦横比を検算しています。\n- 形の違う画像は「幅を揃える」「高さを揃える」「トリミングして揃える」から並べ方を選べます（左の「配置」）。「自由配置」では、横並び・縦積み・入れ子の配置を番号で書きます。横並びは高さ、縦積みは幅がぴったり揃うように各画像の大きさを計算します。トリミングは元の画素をそのまま切り取るだけで、拡大縮小や変形はしません。\n- 元素記号・スケールバーの文字（pt）とバーの太さ（pt）、文字・バーと画像の端の間隔は、図全体で共通です。画像を小さく置いても大きく置いても、文字とバーは同じ大きさになります。\n- 回転・反転：90°単位と反転は画素を並べ替えるだけです。それ以外の角度は補間で画素を作り直します。スケールは回転前の画像から読み取った1画素の長さをそのまま使い、回転後の画像に水平なスケールバーを付けます。\n- AZtecのWord出力は、画像ごとに背景が透明なPNGで入っています。不透明な長方形＝画像本体、その上＝タイトル、下＝スケールバー、と**形だけで**切り分けます。スケールバーの無い横長の画像（Map Sum Spectrum など）はスペクトルと判定し、最初は図から外します。\n- SEM・TEM像は、端にある「平坦な地に文字と線だけの帯」（日立は白地、JEOLは黒地、FEI/Thermo は灰色の表など）を情報帯として取り除きます。帯の中の一番長い線をスケールバーとし（目盛りがあれば両端の目盛りの中心間）、近くの「数値＋単位」の文字を読みます。TEM-EDS のマップは、端の強度カラーバーも外します。\n- 文字とスケールバーが画像に直接重ねて書かれた形式（JEOL の FE-SEM など）は、その文字のある下端の行を切り落とします。文字の下の画像は元データの時点で上書きされているので、復元はできません。画像の中に描き込まれた測長線なども画像の一部なので消せません。\n- DigitalMicrograph（.dm3/.dm4）は画素値の 0.1〜99.9% を白黒の 256 階調に割り当てて表示し、記録された画素寸法を使います（回折像など単位が 1/nm のものにはスケールバーを付けません）。\n- JEOL EPMA のマップ画面は、青緑の地の帯にはさまれた長方形をマップとして元の画素のまま切り出し、下の白い枠の細い線（スケールバー）の長さと「20 µm」などの文字から1画素の大きさを求めます。どのマップも同じ測定なので、同じスケールです。\n- 文字（元素記号とスケール値）は、候補を元の字形に似たフォントで描いて1文字ずつ照合しています。確認した読み取りは記憶され、同じ装置・テンプレートの画像では次回から確実に読めます。\n- SEMのスケールバーが短いと（例：36画素）、バーの長さの丸めで±3%程度の誤差が出ます。SEMが画像と一緒に保存する .txt（日立の PixelSize、JEOLの $$SM_MICRON_BAR）や、FEI/Thermo・ZEISS の TIFF に記録された画素寸法があれば、そちらを優先して使います。\n- 作業ファイル（.edsfig）：読み込んだファイルを1バイトも変えずに（圧縮もせずに）入れたZIP形式のファイルに、設定（edsfig.json）を添えたものです。設定は画像の中身（MD5）に結び付けてあるので、「設定だけ保存」したファイルも、同じ元ファイルと一緒に入れれば（入れる順番やフォルダが違っても）当てはまります。\n- 画質の上限は元画像の解像度です。\n- 動作環境：Streamlit {0}", st.__version__)
+        + ("" if DEFERRED_DOWNLOAD else ui("（1.52 以降に更新すると、書き出しがボタン1回で済みます）"))
     )
 
 save_panel()  # last: the work file gets every setting as it stands after this run

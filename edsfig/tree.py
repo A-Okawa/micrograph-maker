@@ -18,6 +18,8 @@ from __future__ import annotations
 import unicodedata
 from dataclasses import dataclass, field
 
+from .i18n import join, msg
+
 
 class SpecError(ValueError):
     """The arrangement text cannot be read (the message says why, in Japanese)."""
@@ -60,7 +62,7 @@ def _tokens(text: str) -> list[tuple[str, object, int]]:
         elif c in ")]":
             depth -= 1
             if depth < 0:
-                raise SpecError("「)」が「(」より多くあります")
+                raise SpecError(msg("「)」が「(」より多くあります"))
             out.append(("close", c, k))
         elif c in "/;":
             out.append(("slash", c, k))
@@ -70,10 +72,10 @@ def _tokens(text: str) -> list[tuple[str, object, int]]:
         elif c in SEPARATORS or c.isspace():
             pass
         else:
-            raise SpecError(f"使えない文字「{c}」があります。数字・空白・/・( ) だけで書いてください")
+            raise SpecError(msg("使えない文字「{0}」があります。数字・空白・/・( ) だけで書いてください", c))
         k += 1
     if depth > 0:
-        raise SpecError("「(」と「)」の数が合いません（「)」が足りません）")
+        raise SpecError(msg("「(」と「)」の数が合いません（「)」が足りません）"))
     # a line break is a row break only between two complete items
     clean: list[tuple[str, object, int]] = []
     for t in out:
@@ -103,7 +105,7 @@ def _simplify(n: Node) -> Node:
 def parse(text: str) -> Node:
     toks = _tokens(text)
     if not toks:
-        raise SpecError("配置が空です。番号を書いてください（例：1 2 3）")
+        raise SpecError(msg("配置が空です。番号を書いてください（例：1 2 3）"))
     s = unicodedata.normalize("NFKC", text or "")
     pos = 0
 
@@ -130,27 +132,27 @@ def parse(text: str) -> Node:
             pos += 1
             if kind == "num":
                 if val < 1:
-                    raise SpecError("0 番の画像はありません（番号は 1 から）")
+                    raise SpecError(msg("0 番の画像はありません（番号は 1 から）"))
                 kids.append(Node("pic", ref=val))
             else:
                 inner = stack()
                 if peek() is None or peek()[0] != "close":
-                    raise SpecError(f"「{where(at)}」の「(」が閉じていません")
+                    raise SpecError(msg("「{0}」の「(」が閉じていません", where(at)))
                 pos += 1
                 kids.append(inner)
         if not kids:
             t = peek()
             at = t[2] if t else len(s) - 1
-            raise SpecError(f"「{where(at)}」のあたりに番号がありません（/ の前後、( ) の中、行頭・行末の / など）")
+            raise SpecError(msg("「{0}」のあたりに番号がありません（/ の前後、( ) の中、行頭・行末の / など）", where(at)))
         return Node("row", kids=kids)
 
     tree = stack()
     if pos != len(toks):
-        raise SpecError(f"「{where(toks[pos][2])}」の「)」に対応する「(」がありません")
+        raise SpecError(msg("「{0}」の「)」に対応する「(」がありません", where(toks[pos][2])))
     refs = refs_of(tree)
     dup = sorted({r for r in refs if refs.count(r) > 1})
     if dup:
-        raise SpecError("同じ番号が2回以上あります：" + "、".join(str(d) for d in dup) + "（1つの画像は1回だけ）")
+        raise SpecError(msg("同じ番号が2回以上あります：{0}（1つの画像は1回だけ）", join("、", [str(d) for d in dup])))
     return _simplify(tree)
 
 
@@ -260,6 +262,6 @@ def solve(n: Node, aspect: dict[int, float], gap: float, width: float | None = N
     if W > 0 and H > 0:
         place(n, 0.0, 0.0, W, H, gap, memo, rects)
     if not rects or any(r[2] <= 0 or r[3] <= 0 for r in rects.values()):
-        raise ValueError("間隔に対して出力サイズが小さすぎて、この配置では画像が入りません"
-                         "（間隔を小さくするか、出力を大きくしてください）")
+        raise ValueError(msg("間隔に対して出力サイズが小さすぎて、この配置では画像が入りません"
+                         "（間隔を小さくするか、出力を大きくしてください）"))
     return W, H, rects
