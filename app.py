@@ -1062,9 +1062,9 @@ def saved_figure(rkey: str, pks: list[str], exact: bool = False) -> dict | None:
 sb = st.sidebar
 sb.title(APP_NAME)
 language_box(sb)  # at the top: only the screen changes; texts in the figure stay as typed
-if DESKTOP and st.session_state.get("_lang_saved") != LANG:  # the PC app starts in this language next time
+if DESKTOP and os.environ.get("MM_DATA_DIR") and st.session_state.get("_lang_saved") != LANG:  # the PC app starts in this language next time
     try:
-        with open(os.path.join(os.environ.get("MM_DATA_DIR", ""), "prefs.json"), "w", encoding="utf-8") as _fh:
+        with open(os.path.join(os.environ["MM_DATA_DIR"], "prefs.json"), "w", encoding="utf-8") as _fh:
             json.dump({"lang": LANG}, _fh)
     except OSError:
         pass
