@@ -210,6 +210,8 @@ def window(save):
             got = dl.get(label) or {}
             ok(str(got.get('head', '')).startswith(heads) and got.get('bytes', 0) > 100,
                f'{tag}: {label} saved from the window ({got.get("name")}, {got.get("bytes")} bytes)')
+        if res.get('lost_clicks'):
+            print('clicks that brought no file:', json.dumps(res['lost_clicks'], ensure_ascii=False)[:3000], flush=True)
         ok(res.get('exceptions_end') == 0, f'{tag}: no error after the downloads')
         ok(os.path.exists(os.path.join(home, 'exemplars.json')), f'{tag}: the confirmed readings learned (outside the app)')
     else:

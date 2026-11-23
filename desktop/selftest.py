@@ -50,6 +50,16 @@ IDLE_JS = """(function () {
   return !w || w.innerText.toLowerCase().indexOf('running') < 0;
 })()"""
 
+STATE_JS = """(function (label) {
+  var bs = Array.prototype.slice.call(document.querySelectorAll('[data-testid="stDownloadButton"] button'));
+  var w = document.querySelector('[data-testid="stStatusWidget"]');
+  return JSON.stringify({
+    buttons: bs.map(function (e) { return [e.innerText.trim().slice(0, 24), e.disabled, e.offsetParent !== null]; }),
+    status: w ? w.innerText : '', errors: document.querySelectorAll('[data-testid="stException"]').length,
+    alerts: Array.prototype.slice.call(document.querySelectorAll('[data-testid="stAlert"]')).map(function (e) { return e.innerText.slice(0, 120); })
+  });
+})(%s)"""
+
 OPEN_SAVE_JS = """(function () {
   var s = Array.prototype.slice.call(document.querySelectorAll('[data-testid="stSidebar"] [data-testid="stExpander"] summary'))
     .filter(function (e) { return e.innerText.indexOf('作業の保存') >= 0; })[0];
@@ -181,6 +191,14 @@ def run(window, url, log):
             if got:
                 got['clicks'] = attempt
                 break
+            # nothing arrived: note what the page looked like, for the report
+            res.setdefault('lost_clicks', []).append({
+                'label': label, 'attempt': attempt, 'files': sorted(os.listdir(save)) if os.path.isdir(save) else [],
+                'state': js(STATE_JS % json.dumps(label))})
+            dump()
+            if label == '作業を保存':
+                js(OPEN_SAVE_JS)                           # (opens the section again if a redraw closed it)
+                time.sleep(3)
         res['downloads'][label] = got
         dump()
     res['files_in_save_dir'] = sorted(os.listdir(save))
