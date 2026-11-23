@@ -326,6 +326,12 @@ def _find_scalebar(alpha: np.ndarray, box) -> ScaleBar | None:
     if below.size == 0 or below.max() < 0.3:
         return None
     strong = below > 0.6
+    # The rows right under the box that are still as wide as the image are the image's own soft edge (a last row
+    # that is not fully opaque), not a scale bar: a "bar" as long as the image is wide would be measured there.
+    edge = 0
+    while edge < strong.shape[0] and strong[edge, x0 : x1 + 1].mean() > 0.9:
+        strong[edge] = False
+        edge += 1
     runs = _longest_runs(strong)
     if runs.max() < 12:
         return None
