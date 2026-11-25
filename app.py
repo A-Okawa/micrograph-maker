@@ -13,7 +13,9 @@ import io
 import json
 import os
 import re
+import sys
 import threading
+import time
 import zipfile
 from dataclasses import asdict, replace
 from datetime import datetime
@@ -1424,6 +1426,19 @@ def size_text(n: int) -> str:
     return f"{n / 1e6:.1f} MB" if n >= 1e5 else f"{max(1, round(n / 1e3))} KB"
 
 
+def packed_work(loaded: list, state: dict) -> bytes:
+    """The work file, made when its button is pressed.  One line goes to the app's log (how long it took, or
+    what went wrong): a button that stays grey can then be told apart from a file that never arrived."""
+    t0 = time.time()
+    try:
+        data = P.pack(loaded, state, True, APP_VERSION)
+    except Exception as e:  # noqa: BLE001
+        print(f"work file: failed after {time.time() - t0:.2f} s: {e!r}", file=sys.stderr, flush=True)
+        raise
+    print(f"work file: {len(data)} bytes made in {time.time() - t0:.2f} s", file=sys.stderr, flush=True)
+    return data
+
+
 def save_panel() -> None:
     """作業の保存 (in the sidebar, under the file box): the loaded files as they are, and every setting."""
     state = gather_state()
@@ -1439,7 +1454,7 @@ def save_panel() -> None:
                    "次回は上の欄にその作業ファイルを入れるだけで、続きから作業できます。"))
         if DEFERRED_DOWNLOAD:
             sums = None
-            st.download_button(ui("作業を保存（{0}）", size_text(total)), data=partial(P.pack, loaded, state, True, APP_VERSION),
+            st.download_button(ui("作業を保存（{0}）", size_text(total)), data=partial(packed_work, loaded, state),
                                file_name=full_name, mime=mime, **opt(st.download_button, type="primary"),
                                **FW_DOWNLOAD)
         else:  # older Streamlit: build the file first, then save it

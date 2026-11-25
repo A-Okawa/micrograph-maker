@@ -55,7 +55,7 @@ STATE_JS = """(function (label) {
   var w = document.querySelector('[data-testid="stStatusWidget"]');
   return JSON.stringify({
     buttons: bs.map(function (e) { return [e.innerText.trim().slice(0, 24), e.disabled, e.offsetParent !== null]; }),
-    status: w ? w.innerText : '', errors: document.querySelectorAll('[data-testid="stException"]').length,
+    jserrors: (window.__mm_errs || []).slice(-6), status: w ? w.innerText : '', errors: document.querySelectorAll('[data-testid="stException"]').length,
     alerts: Array.prototype.slice.call(document.querySelectorAll('[data-testid="stAlert"]')).map(function (e) { return e.innerText.slice(0, 120); })
   });
 })(%s)"""
@@ -134,6 +134,10 @@ def run(window, url, log):
     res['sidebar'] = bool(_poll(lambda: js('!!document.querySelector(\'[data-testid="stSidebar"]\')'), 180))
     time.sleep(2)
     res['user_agent'] = js('navigator.userAgent')
+    js("""window.__mm_errs = [];
+window.addEventListener('error', function (e) { window.__mm_errs.push('error: ' + e.message); });
+window.addEventListener('unhandledrejection', function (e) { window.__mm_errs.push('rejection: ' + String(e.reason)); });
+true""")
     res['title'] = js('document.title')
     res['exceptions'] = js('document.querySelectorAll(\'[data-testid="stException"]\').length')
     res['sidebar_text'] = (js('document.querySelector(\'[data-testid="stSidebar"]\').innerText') or '')[:400]
