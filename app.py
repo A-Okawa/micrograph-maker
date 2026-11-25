@@ -1561,6 +1561,20 @@ if ro is not None:
 TABLES[key] = table
 remember_rows(table, PK)
 st.session_state.setdefault("tpks", {})[key] = {i: PK[i] for i in table.index}
+# element maps in order of atomic number (the maps in use change places among themselves; the rest stays)
+_zs = [ordering.atomic_number(cell_text(lab)) if is_used(u) and cell_text(k) == KIND_JA["map"] else None
+       for lab, u, k in zip(table["label"], table["use"], table["kind"])]
+if sum(z is not None for z in _zs) >= 2:
+    _zplaces = ordering.by_element([_num(v, k + 1) for k, v in enumerate(table["order"])], _zs)
+    if st.button(ui("マップを元素番号順に並べる"), key=f"zs_{key}", disabled=_zplaces is None,
+                 help=ui("「使う」のマップを、ラベルの元素記号の原子番号の小さい順（C → O → Si → Yb など）に並べ替えます。"
+                         "電子像など、マップ以外の画像の位置は変わりません。ラベルを書き換えた場合は、書き換えた後の元素記号で並べます。"
+                         "並べた後も「順」の番号で動かせます。")) and _zplaces is not None:
+        _zt = with_places(table, _zplaces)
+        TABLES[key] = BASES[key] = _zt
+        EDVER[key] = EDVER.get(key, 0) + 1
+        remember_rows(_zt, PK)
+        st.rerun()
 apply_bands(rep, table)  # the band settings of the table apply to everything below
 
 # ---- 2. brightness / contrast (and trimming) --------------------------------

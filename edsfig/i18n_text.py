@@ -1329,4 +1329,12 @@ TEXT = [
      " ({0})",
      " ({0})",
      " ({0})"),
+    ("マップを元素番号順に並べる",
+     "Sort the maps by atomic number",
+     "Sắp xếp bản đồ theo số hiệu nguyên tử",
+     "เรียงแผนที่ตามเลขอะตอม"),
+    ("「使う」のマップを、ラベルの元素記号の原子番号の小さい順（C → O → Si → Yb など）に並べ替えます。電子像など、マップ以外の画像の位置は変わりません。ラベルを書き換えた場合は、書き換えた後の元素記号で並べます。並べた後も「順」の番号で動かせます。",
+     "Puts the maps with “Use” ticked in order of the atomic number of the element symbol in their label, smallest first (C → O → Si → Yb etc.). Electron images and other images that are not maps stay where they are. If you changed a label, the symbol as changed is used. You can still move images with the “No.” numbers afterwards.",
+     "Sắp xếp các bản đồ được chọn “Dùng” theo số hiệu nguyên tử của ký hiệu nguyên tố trong nhãn, từ nhỏ đến lớn (C → O → Si → Yb v.v.). Ảnh điện tử và các ảnh khác không phải bản đồ giữ nguyên vị trí. Nếu bạn đã sửa nhãn, ký hiệu sau khi sửa sẽ được dùng. Sau khi sắp xếp vẫn có thể di chuyển ảnh bằng số “STT”.",
+     "เรียงแผนที่ที่เลือก “ใช้” ตามเลขอะตอมของสัญลักษณ์ธาตุในป้ายกำกับ จากน้อยไปมาก (C → O → Si → Yb ฯลฯ) ภาพอิเล็กตรอนและภาพอื่นที่ไม่ใช่แผนที่จะอยู่ตำแหน่งเดิม หากแก้ไขป้ายกำกับ จะใช้สัญลักษณ์หลังแก้ไข หลังเรียงแล้วยังย้ายภาพด้วยหมายเลข “ลำดับ” ได้"),
 ]

@@ -69,3 +69,40 @@ def from_list(text: str, n: int) -> list[int]:
     for place, k in enumerate(want + rest, 1):
         places[k] = place
     return places
+
+
+ELEMENTS = ("H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr "
+            "Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir "
+            "Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl "
+            "Mc Lv Ts Og").split()
+_Z = {sym: z for z, sym in enumerate(ELEMENTS, 1)}
+
+
+def atomic_number(label: str) -> int | None:
+    """Atomic number of the element a map label starts with: 'Ti' -> 22, 'O K' -> 8, 'Yb Lα1' -> 70.
+    None for anything else ('SED', 'BED-C', a sample name, an empty label)."""
+    text = (label or "").strip()
+    for n in (2, 1):
+        sym = text[:n]
+        if sym in _Z and not text[n : n + 1].isalpha():
+            return _Z[sym]
+    return None
+
+
+def by_element(order: list[float], numbers: list[int | None]) -> list[int] | None:
+    """Places 1..n with the element maps in order of atomic number.  `numbers` gives the atomic number of
+    each picture that takes part (None: stays where it is - electron images, layered images, pictures left
+    out).  The maps only change places among themselves: the places the other pictures have stay theirs.
+    Two maps of one element keep their order.  None when nothing changes."""
+    seq = sorted(range(len(order)), key=lambda k: (order[k], k))
+    slots = [pos for pos, k in enumerate(seq) if numbers[k] is not None]
+    maps = sorted((seq[pos] for pos in slots), key=lambda k: numbers[k])  # (stable)
+    new = list(seq)
+    for pos, k in zip(slots, maps):
+        new[pos] = k
+    if new == seq:
+        return None
+    places = [0] * len(order)
+    for place, k in enumerate(new, 1):
+        places[k] = place
+    return places

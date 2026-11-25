@@ -51,9 +51,26 @@ def test_pictures_left_out_go_to_the_bottom():
     assert order.used_first([2, 1, 3, 4], [True, True, False, True]) == [2, 1, 4, 3]
 
 
+def test_by_element():
+    z = order.atomic_number
+    assert [z(x) for x in ("Ti", "O K", "Yb Lα1", "C K series", " Si", "K", "Y")] == [22, 8, 70, 6, 14, 19, 39]
+    assert [z(x) for x in ("SED", "BED-C", "", None, "Sample 1", "Xx", "ti", "Overlay", "Na-rich")] == [None] * 8 + [11]
+    # electron image first, then Yb, O, Si, Na: the maps change places among themselves, the image stays
+    assert order.by_element([1, 2, 3, 4, 5], [None, 70, 8, 14, 11]) == [1, 5, 2, 4, 3]
+    # a picture between the maps keeps its place; a map left out (None) is not touched
+    assert order.by_element([1, 2, 3, 4, 5], [22, None, 8, None, 6]) == [5, 2, 3, 4, 1]
+    # the order on screen counts, not the rows: rows listed 3,1,2 hold Si, C, O
+    assert order.by_element([3, 1, 2], [14, 6, 8]) is None
+    assert order.by_element([1, 3, 2], [14, 6, 8]) == [3, 1, 2]
+    # two maps of one element keep their order; nothing to do -> None
+    assert order.by_element([1, 2, 3], [8, 8, 6]) == [2, 3, 1]
+    assert order.by_element([1, 2, 3], [6, 8, None]) is None
+
+
 if __name__ == "__main__":
     test_typed_number_moves_the_picture()
     test_step_among_pictures_in_use()
     test_order_from_list()
     test_pictures_left_out_go_to_the_bottom()
+    test_by_element()
     print("ok")
