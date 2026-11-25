@@ -127,7 +127,7 @@ with sync_playwright() as p:
     cap = captions(pg)
     cards = ' '.join(pg.locator('[data-testid="caption"], [data-testid="stImageCaption"]').all_inner_texts())
     ok('1画素 = 65.79 nm' in cap, 'the Word report: 5 µm over 76 px read (65.79 nm per pixel)')
-    ok('2. Ti' in cards and '3. O' in cards, f'the Word report: element labels read ({cards[:80]})')
+    ok('2. O' in cards and '3. Ti' in cards, f'the Word report: element labels read, maps in order of atomic number ({cards[:80]})')
     ok(pg.locator(EXC).count() == 0, 'no error after loading the samples')
     pg.screenshot(path=os.path.join(OUT, f'{MODE}-2-report.png'), full_page=True)
 

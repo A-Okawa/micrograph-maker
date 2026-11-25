@@ -834,6 +834,7 @@ SIDEBAR = {
     "height_mm": (120.0, (20.0, 1000.0)),
     "arrange": ("列数で並べる", list(ARRANGES)),
     "auto_cols": (False, bool),
+    "auto_z": (True, bool),
     "ncols": (3, (1, 10)),
     "rows_text": ("", str),
     "row_align": ("自動", list(ROW_ALIGNS)),
@@ -947,6 +948,8 @@ def restore(doc: dict) -> None:
     for k, v in part(s, "sidebar").items():
         if k in SIDEBAR and fits(SIDEBAR[k], v):
             ss[k] = as_saved(SIDEBAR[k], v)
+    if "auto_z" not in part(s, "sidebar"):  # saved before the automatic order existed: the saved order stays
+        ss["auto_z"] = False
     pics = part(s, "pictures")
     mine: set[str] = set()
     for name, (store, fields) in PICTURE_STORES.items():
@@ -1132,6 +1135,10 @@ free = ARRANGES[sb.radio(ui("並べ方"), list(ARRANGES), format_func=ui, key="a
                          help=ui("自由配置：横並びの中に縦積み、その中に 2×2 など、入れ子の配置を番号で書きます"
                               "（「4. プレビュー」の上の欄）。図全体を1枚として組むので、"
                               "元素記号・スケールバーの文字とバーの太さは、どのパネルでも同じ大きさになります。"))] == "free"
+auto_z = toggle(sb, ui("マップを元素番号順に並べる"), key="auto_z",
+                help=ui("オンの間、「使う」のマップはいつも、ラベルの元素記号の原子番号の小さい順（C → O → Si → Yb など）に並びます。"
+                        "電子像など、マップ以外の画像の位置は変わりません。ラベルを書き換えると、その元素記号で並べ直します。"
+                        "マップの順番を自分で決めたいときはオフにします。"))
 c1, c2 = sb.columns(2)
 auto_cols = toggle(c2, ui("列数を自動"), key="auto_cols", disabled=size_mode != "box" or free,
                    help=ui("「幅と高さを指定」のとき、画像が一番大きくなる列数を選びます"))
@@ -1566,10 +1573,12 @@ _zs = [ordering.atomic_number(cell_text(lab)) if is_used(u) and cell_text(k) == 
        for lab, u, k in zip(table["label"], table["use"], table["kind"])]
 if sum(z is not None for z in _zs) >= 2:
     _zplaces = ordering.by_element([_num(v, k + 1) for k, v in enumerate(table["order"])], _zs)
-    if st.button(ui("マップを元素番号順に並べる"), key=f"zs_{key}", disabled=_zplaces is None,
-                 help=ui("「使う」のマップを、ラベルの元素記号の原子番号の小さい順（C → O → Si → Yb など）に並べ替えます。"
-                         "電子像など、マップ以外の画像の位置は変わりません。ラベルを書き換えた場合は、書き換えた後の元素記号で並べます。"
-                         "並べた後も「順」の番号で動かせます。")) and _zplaces is not None:
+    _go = auto_z and _zplaces is not None  # always in order while the sidebar's switch is on
+    if not auto_z:
+        _go = st.button(ui("今だけ元素番号順に並べる"), key=f"zs_{key}", disabled=_zplaces is None,
+                        help=ui("「使う」のマップを一度だけ元素番号順に並べます。その後は「順」の番号で自由に動かせます。")) \
+            and _zplaces is not None
+    if _go:
         _zt = with_places(table, _zplaces)
         TABLES[key] = BASES[key] = _zt
         EDVER[key] = EDVER.get(key, 0) + 1
