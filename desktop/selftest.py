@@ -60,6 +60,14 @@ STATE_JS = """(function (label) {
   });
 })(%s)"""
 
+REDRAW_JS = """(function () {
+  var t = Array.prototype.slice.call(document.querySelectorAll('[data-testid="stMain"] [data-testid="stCheckbox"] label, [data-testid="stMain"] [data-testid="stToggle"] label'))
+    .filter(function (e) { return e.innerText.indexOf('プレビューに番号を表示') >= 0; })[0];
+  if (!t) return false;
+  t.click();
+  return true;
+})()"""
+
 OPEN_SAVE_JS = """(function () {
   var s = Array.prototype.slice.call(document.querySelectorAll('[data-testid="stSidebar"] [data-testid="stExpander"] summary'))
     .filter(function (e) { return e.innerText.indexOf('作業の保存') >= 0; })[0];
@@ -183,6 +191,7 @@ def run(window, url, log):
             time.sleep(2)
         got = None
         for attempt in range(1, 4):                        # a click while the page is still redrawing is lost: again
+            time.sleep(3)                                  # (the redraw after the download before starts a moment later)
             idle()
             if not js(CLICK_JS % json.dumps(label)):
                 got = {'clicked': False}
@@ -196,6 +205,12 @@ def run(window, url, log):
                 'label': label, 'attempt': attempt, 'files': sorted(os.listdir(save)) if os.path.isdir(save) else [],
                 'state': js(STATE_JS % json.dumps(label))})
             dump()
+            # A click lost in a redraw leaves Streamlit's button greyed ("preparing") until the page is drawn again:
+            # switch 「プレビューに番号を表示」 on and off, which draws the page twice.
+            for _ in range(2):
+                js(REDRAW_JS)
+                time.sleep(2)
+                idle()
             if label == '作業を保存':
                 js(OPEN_SAVE_JS)                           # (opens the section again if a redraw closed it)
                 time.sleep(3)
