@@ -343,6 +343,14 @@ def reset_adjust(pk: str) -> None:
         st.session_state[adj_key(n, pk)] = d
 
 
+def set_all_auto(master: str, pks: list[str]) -> None:
+    """The switch above the cards: the automatic level correction of every picture on or off (the other
+    adjustments of each picture stay)."""
+    on = bool(st.session_state.get(master))
+    for pk in pks:
+        st.session_state[adj_key("auto", pk)] = on
+
+
 def copy_adjust(pk: str, targets: list[str]) -> None:
     vals = {n: st.session_state.get(adj_key(n, pk), d) for n, d in ADJ_DEFAULT.items()}
     for t in targets:
@@ -1640,6 +1648,18 @@ if align != "crop":  # each picture trimmed on its own (the card's "トリミン
     if boxes:
         trim_note.caption(ui("黄色の枠の中が図に使う部分です（各カードの「トリミング」）。切り取りは元の画素をそのまま使い、"
                           "拡大縮小や変形はしません。スケールバーは切り取った後の視野に合わせて付きます。"))
+for i in shown:  # set once; the widgets then keep what the user chooses
+    for n, d in ADJ_DEFAULT.items():
+        if adj_key(n, PK[i]) not in st.session_state:
+            st.session_state[adj_key(n, PK[i])] = ADJ.get(PK[i], {}).get(n, d)
+if shown:
+    _all_pks = [PK[i] for i in shown]
+    _master = f"allauto_{key}"
+    st.session_state[_master] = all(bool(st.session_state[adj_key("auto", pk)]) for pk in _all_pks)  # shows what is set now
+    toggle(st, ui("全画像に自動レベル補正"), key=_master, on_change=set_all_auto, args=(_master, _all_pks),
+           help=ui("この図で使う画像すべての「自動（レベル補正）」を、まとめてオン・オフします。"
+                   "明るさ・コントラスト・γ の値はそのまま残ります。画像ごとのスイッチで、後から1枚ずつ変えられます。"
+                   "すべての画像がオンのとき、このスイッチもオンになります。"))
 PER_ROW = 4
 for start in range(0, len(shown), PER_ROW):
     cols = st.columns(PER_ROW)

@@ -1345,4 +1345,12 @@ TEXT = [
      "Puts the maps with “Use” ticked in order of atomic number once. After that you can move them freely with the “No.” numbers.",
      "Sắp xếp các bản đồ được chọn “Dùng” theo số hiệu nguyên tử một lần. Sau đó có thể di chuyển tự do bằng số “STT”.",
      "เรียงแผนที่ที่เลือก “ใช้” ตามเลขอะตอมหนึ่งครั้ง หลังจากนั้นย้ายได้อย่างอิสระด้วยหมายเลข “ลำดับ”"),
+    ("全画像に自動レベル補正",
+     "Automatic level correction for all images",
+     "Tự động hiệu chỉnh mức cho mọi ảnh",
+     "ปรับระดับอัตโนมัติทุกภาพ"),
+    ("この図で使う画像すべての「自動（レベル補正）」を、まとめてオン・オフします。明るさ・コントラスト・γ の値はそのまま残ります。画像ごとのスイッチで、後から1枚ずつ変えられます。すべての画像がオンのとき、このスイッチもオンになります。",
+     "Turns “Automatic (level correction)” on or off for every image used in this figure at once. The brightness, contrast and γ values stay as they are. You can still change single images with their own switches afterwards. This switch is on when every image has it on.",
+     "Bật hoặc tắt cùng lúc “Tự động (hiệu chỉnh mức)” cho mọi ảnh dùng trong hình này. Giá trị độ sáng, độ tương phản và γ được giữ nguyên. Sau đó vẫn có thể đổi từng ảnh bằng công tắc riêng. Công tắc này bật khi mọi ảnh đều đang bật.",
+     "เปิดหรือปิด “อัตโนมัติ (ปรับระดับ)” ของทุกภาพที่ใช้ในรูปนี้พร้อมกัน ค่าความสว่าง คอนทราสต์ และ γ จะคงเดิม หลังจากนั้นยังเปลี่ยนทีละภาพด้วยสวิตช์ของแต่ละภาพได้ สวิตช์นี้จะเปิดเมื่อทุกภาพเปิดอยู่"),
 ]
